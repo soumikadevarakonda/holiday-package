@@ -1,118 +1,110 @@
 import React from 'react';
 import { PriceDiff } from './PriceDiff';
+import { Photo } from '../common/Photo';
+import { Icon } from '../common/Icon';
+import { ScoreBadge } from '../common/ScoreBadge';
 import type { ChangeOption } from '../../api/types';
 
 interface OptionListProps {
   options: ChangeOption[];
+  kind?: string;
   currentCatalogId?: string;
   onSelectOption: (option: ChangeOption) => void;
   loading?: boolean;
 }
 
-export const OptionList: React.FC<OptionListProps> = ({
-  options,
-  currentCatalogId,
-  onSelectOption,
-  loading = false,
-}) => {
+/** Alternatives for one part of the trip, each with its price difference and a Select button. */
+export const OptionList: React.FC<OptionListProps> = ({ options, kind, currentCatalogId, onSelectOption, loading = false }) => {
   if (options.length === 0) {
-    return (
-      <div className="p-space-lg text-center text-on-surface-variant font-body-md text-body-md">
-        No alternative options available for this selection.
-      </div>
-    );
+    return <p className="p-6 text-center text-ink-mute">No options match.</p>;
   }
 
   return (
-    <div className="flex flex-col gap-space-sm">
-      {options.map((option) => {
-        const isCurrent = option.current ?? option.catalog_id === currentCatalogId;
-        const diff = option.price_diff ?? 0;
-        const isUpgrade = diff > 0;
-
-        let badgeText = isCurrent ? 'Current Selection' : isUpgrade ? 'Premium Upgrade' : 'Budget Saver';
-        let badgeClass = isCurrent
-          ? 'bg-primary text-on-primary'
-          : isUpgrade
-          ? 'bg-secondary-container text-on-secondary-container'
-          : 'bg-surface-container-high text-on-surface-variant';
-
+    <ul className="flex flex-col gap-3">
+      {options.map((o) => {
+        const current = o.current ?? o.catalog_id === currentCatalogId;
+        const d = o.details || {};
+        const notes: string[] = [...(d.side_effects || []), ...(d.warnings || [])];
+        const showPhoto = kind === 'hotel' || kind === 'attraction';
         return (
-          <div
-            key={option.key || option.catalog_id}
-            className={`p-space-md rounded-xl transition-all ${
-              isCurrent
-                ? 'bg-surface-container-low border border-primary/20'
-                : 'bg-surface-container-lowest hover:bg-surface-container-low border border-outline-variant/30'
-            }`}
+          <li
+            key={o.key || o.catalog_id}
+            className={`rounded-lg border bg-white overflow-hidden flex ${current ? 'border-brand ring-1 ring-brand' : 'border-line'}`}
           >
-            <div className="flex items-start justify-between gap-space-sm">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded font-label-sm text-label-sm font-semibold ${badgeClass}`}>
-                    {badgeText}
-                  </span>
-                  <h4 className="font-headline-sm text-headline-sm font-semibold text-on-surface">
-                    {option.name}
-                  </h4>
+            {showPhoto && (
+              <Photo
+                src={o.image}
+                alt={o.name}
+                fallbackType={kind === 'hotel' ? 'hotel' : 'attraction'}
+                className="w-28 sm:w-36 object-cover shrink-0 self-stretch"
+              />
+            )}
+            <div className="flex-1 p-3 flex flex-col gap-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {current && (
+                    <span className="inline-block mb-1 px-2 py-0.5 rounded text-xs font-semibold bg-brand text-white">
+                      Your current choice
+                    </span>
+                  )}
+                  <h3 className="font-bold text-brand leading-snug">{o.name}</h3>
                 </div>
-
-                {option.room_type && (
-                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    {option.room_type}
-                  </p>
-                )}
-
-                {option.airline && (
-                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    {option.airline}
-                    {option.departure_time ? ` • Departs ${option.departure_time}` : ''}
-                    {option.arrival_time ? ` • Arrives ${option.arrival_time}` : ''}
-                    {option.duration ? ` • ${option.duration}` : ''}
-                  </p>
-                )}
-
-                {option.category && (
-                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    {option.category.replace(/_/g, ' ').toLowerCase()}
-                    {option.time_slot ? ` • starts ${option.time_slot}` : ''}
-                  </p>
-                )}
-
-                {(option.details?.side_effects?.length > 0 || option.details?.warnings?.length > 0) && (
-                  <p className="font-body-sm text-body-sm text-tertiary mt-1">
-                    {[...(option.details?.side_effects || []), ...(option.details?.warnings || [])].join(' ')}
-                  </p>
-                )}
-
-                <div className="flex items-center gap-2 mt-2 font-label-sm text-label-sm text-on-surface-variant">
-                  {option.rating != null && <span>Guest rating {option.rating}/10</span>}
-                  {option.rating != null && <span>•</span>}
-                  <span>{option.price_inr != null ? `Total ₹ ${Math.round(option.price_inr).toLocaleString('en-IN')}` : ''}</span>
-                </div>
+                {kind === 'hotel' && <ScoreBadge rating={o.rating} stars={d.stars} compact />}
               </div>
 
-              <div className="text-right flex flex-col items-end shrink-0">
-                <PriceDiff diff={diff} />
-                <span className="font-label-sm text-label-sm text-on-surface-variant">
-                  {isCurrent ? 'Base Package' : 'Price Difference'}
-                </span>
+              {kind === 'hotel' && (
+                <p className="text-sm text-ink-soft">
+                  {o.room_type}
+                  {d.refundable === true && <span className="text-ok"> · free cancellation</span>}
+                </p>
+              )}
+              {kind === 'flight' && (
+                <p className="text-sm text-ink-soft flex flex-wrap gap-x-3">
+                  <span className="font-semibold text-ink tabular-nums">
+                    {o.departure_time} → {o.arrival_time}
+                  </span>
+                  <span>{o.duration}</span>
+                  <span className={d.stops ? 'text-warn' : 'text-ok'}>{d.stops ? `${d.stops} stop` : 'Direct'}</span>
+                  {d.seats_left != null && <span>{d.seats_left} seats left</span>}
+                </p>
+              )}
+              {kind === 'attraction' && (
+                <p className="text-sm text-ink-soft">
+                  {o.time_slot && <span className="font-semibold text-ink">Starts {o.time_slot}</span>}
+                  {o.category ? ` · ${o.category.replace(/_/g, ' ').toLowerCase()}` : ''}
+                  {d.visit_minutes ? ` · ${d.visit_minutes} min` : ''}
+                  {d.child_friendly ? ' · good for kids' : ''}
+                </p>
+              )}
+              {notes.length > 0 && (
+                <p className="text-xs text-warn flex items-start gap-1">
+                  <Icon name="info" className="!text-sm mt-px" />
+                  {notes.join(' ')}
+                </p>
+              )}
 
-                {!isCurrent && (
+              <div className="mt-auto pt-2 flex items-end justify-between gap-2">
+                <div>
+                  <PriceDiff diff={o.price_diff} />
+                  <div className="text-xs text-ink-mute">
+                    {o.price_inr === 0 ? 'Free' : `₹ ${Math.round(o.price_inr).toLocaleString('en-IN')} total`}
+                  </div>
+                </div>
+                {!current && (
                   <button
                     type="button"
                     disabled={loading}
-                    onClick={() => onSelectOption(option)}
-                    className="mt-2 px-3 py-1 bg-primary text-on-primary rounded text-label-sm font-label-sm font-semibold hover:bg-primary-container transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
+                    onClick={() => onSelectOption(o)}
+                    className="h-10 px-4 rounded-md bg-brand hover:bg-brand-dark text-white font-semibold disabled:opacity-50"
                   >
-                    {loading ? 'Applying...' : 'Select Option'}
+                    {kind === 'attraction' ? 'Add' : 'Select'}
                   </button>
                 )}
               </div>
             </div>
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 };
