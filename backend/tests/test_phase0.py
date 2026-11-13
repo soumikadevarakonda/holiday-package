@@ -1,4 +1,4 @@
-"""Phase 0 exit checks: the app starts, shared plumbing works, stubs honour the interface."""
+"""Phase 0 exit checks: the app starts, shared plumbing works, the engine keeps its frozen interface."""
 
 import json
 from datetime import date
@@ -44,12 +44,13 @@ def test_menon_fixture_round_trips_trip_format(menon):
     assert set(example["items"][0]) <= set(d["items"][0])        # every example item field is present
 
 
-def test_engine_stubs_keep_their_signatures(menon):
+def test_engine_functions_keep_their_frozen_signatures(menon):
     result = build(MENON, mode="three")
     assert result.outcome == "PACKAGE" and set(result.alternatives) == {"cheapest", "fastest", "best_rated"}
     assert rebuild(MENON, result.package.city_plan).package is not None
     assert validate(menon) == []
-    assert options(menon, "hotel", city="Tokyo")[0].price_diff == 0
+    current = [o for o in options(menon, "hotel", city="Tokyo") if o.details["current"]]
+    assert len(current) == 1 and current[0].price_diff == 0
     att = next(i for i in menon.items if i.type == "attraction")
     after = apply_change(menon, Change(type="remove_attraction", item_id=att.item_id)).package
     assert len(after.items) == len(menon.items) - 1 and len(menon.items) == 11   # original untouched
