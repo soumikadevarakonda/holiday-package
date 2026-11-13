@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from '../common/Icon';
 import { formatINR } from '../../utils/format';
 
 interface OverBudgetPanelProps {
@@ -9,82 +10,63 @@ interface OverBudgetPanelProps {
   onAcceptCheapest?: () => void;
 }
 
+/** Shown when even the cheapest possible trip costs more than the budget. */
 export const OverBudgetPanel: React.FC<OverBudgetPanelProps> = ({
   cheapestTotal,
   overBy,
-  suggestion = 'Raise your budget or decrease duration by 1–2 nights to fit available inventory.',
+  suggestion,
   onModifyRequest,
   onAcceptCheapest,
-}) => {
-  return (
-    <div className="bg-surface-container-lowest rounded-xl shadow-md p-space-lg lg:p-space-xl border border-tertiary/20 flex flex-col gap-space-md">
-      <div className="flex items-start gap-space-md">
-        <div className="w-12 h-12 rounded-xl bg-tertiary-fixed text-on-tertiary-fixed flex items-center justify-center shrink-0">
-          <span className="material-symbols-outlined text-[26px]">account_balance_wallet</span>
-        </div>
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center justify-between gap-space-xs">
-            <span className="px-2.5 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-label-sm text-label-sm uppercase font-semibold">
-              Budget Constraint Advisory
-            </span>
-            {overBy && overBy > 0 && (
-              <span className="font-currency-md text-currency-md font-bold text-tertiary">
-                Over by {formatINR(overBy)}
-              </span>
-            )}
-          </div>
-          <h3 className="font-headline-lg text-headline-lg text-on-surface mt-1">
-            Package Exceeds Requested Budget
-          </h3>
-          <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-            We discovered verified travel combinations matching your corridor and dates, but the lowest available airfare and accommodation tier exceeds your specified limit.
-          </p>
-        </div>
-      </div>
-
-      {/* Comparison metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md bg-surface-container-low p-space-md rounded-xl">
-        {cheapestTotal !== undefined && (
-          <div className="flex flex-col">
-            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase">
-              Cheapest Feasible Package Total
-            </span>
-            <span className="font-currency-display text-headline-lg text-primary font-bold mt-0.5">
-              {formatINR(cheapestTotal)}
-            </span>
-            <span className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
-              Includes guaranteed return flights + base hotel stays
-            </span>
-          </div>
-        )}
-        <div className="flex flex-col justify-center">
-          <span className="font-label-sm text-label-sm text-primary uppercase font-bold">
-            Recommendation
-          </span>
-          <p className="font-body-md text-body-md text-on-surface font-medium mt-0.5">
+}) => (
+  <section className="bg-white rounded-lg shadow-card border-l-4 border-warn p-5 sm:p-6" aria-live="polite">
+    <div className="flex items-start gap-3">
+      <span className="w-10 h-10 rounded-full bg-warn-light text-warn flex items-center justify-center shrink-0">
+        <Icon name="account_balance_wallet" />
+      </span>
+      <div className="flex-1">
+        <h2 className="text-lg font-bold text-ink">This trip doesn't fit your budget</h2>
+        <p className="text-sm text-ink-soft mt-1">
+          We found trips for your dates, but even the cheapest one costs more than you set.
+        </p>
+        <dl className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {cheapestTotal !== undefined && (
+            <div>
+              <dt className="text-xs text-ink-mute">Cheapest trip</dt>
+              <dd className="text-xl font-bold text-ink tabular-nums">{formatINR(cheapestTotal)}</dd>
+            </div>
+          )}
+          {overBy !== undefined && overBy > 0 && (
+            <div>
+              <dt className="text-xs text-ink-mute">Over your budget by</dt>
+              <dd className="text-xl font-bold text-warn tabular-nums">{formatINR(overBy)}</dd>
+            </div>
+          )}
+        </dl>
+        {suggestion && (
+          <p className="mt-3 text-sm bg-canvas rounded-md p-3 text-ink">
+            <Icon name="lightbulb" className="!text-base text-warn mr-1" />
             {suggestion}
           </p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-end gap-space-sm pt-space-xs">
-        <button
-          type="button"
-          onClick={onModifyRequest}
-          className="px-space-md py-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-headline-sm text-headline-sm transition-colors"
-        >
-          Adjust Trip Parameters
-        </button>
-        {onAcceptCheapest && (
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {onAcceptCheapest && (
+            <button
+              type="button"
+              onClick={onAcceptCheapest}
+              className="h-10 px-4 rounded-md bg-brand hover:bg-brand-dark text-white font-semibold"
+            >
+              See the cheapest trip
+            </button>
+          )}
           <button
             type="button"
-            onClick={onAcceptCheapest}
-            className="px-space-lg py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-sm text-headline-sm transition-all shadow-sm"
+            onClick={onModifyRequest}
+            className="h-10 px-4 rounded-md border border-brand text-brand font-semibold hover:bg-brand-light"
           >
-            Review Cheapest Package
+            Change search
           </button>
-        )}
+        </div>
       </div>
     </div>
-  );
-};
+  </section>
+);
