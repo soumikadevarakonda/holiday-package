@@ -8,6 +8,12 @@ export const App: React.FC = () => {
   const isPlanTrip = location.pathname === '/';
   const isActivePackage = location.pathname.startsWith('/package');
   const isReservation = location.pathname.startsWith('/reservation');
+  let lastPackage: string | null = null;
+  try {
+    lastPackage = localStorage.getItem('bmh:lastPackage');
+  } catch {
+    lastPackage = null;
+  }
 
   return (
     <div className="min-h-screen bg-surface flex flex-col font-body-md text-body-md text-on-surface antialiased">
@@ -36,7 +42,7 @@ export const App: React.FC = () => {
                 Plan Trip
               </Link>
               <Link
-                to="/package/demo"
+                to={lastPackage ? `/package/${lastPackage}` : '/'}
                 className={`transition-colors py-space-xs px-space-xs ${
                   isActivePackage
                     ? 'text-primary font-semibold'
@@ -46,7 +52,7 @@ export const App: React.FC = () => {
                 Active Package
               </Link>
               <Link
-                to="/reservation/lookup"
+                to="/reservation"
                 className={`transition-colors py-space-xs px-space-xs ${
                   isReservation
                     ? 'text-primary font-semibold'
