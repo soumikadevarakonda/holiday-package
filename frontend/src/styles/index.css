@@ -15,7 +15,7 @@ body {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
   font-style: normal;
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
   letter-spacing: normal;
   text-transform: none;
@@ -23,6 +23,20 @@ body {
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
+  vertical-align: middle;
   -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
+}
+
+.icon-fill {
+  font-variation-settings: 'FILL' 1;
+}
+
+/* Horizontal chip rows: scrollable without a visible scrollbar */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@media print {
+  header, footer, .no-print { display: none !important; }
+  body { background: #fff; }
 }
