@@ -1,4 +1,6 @@
 import React from 'react';
+import { BudgetBar } from './BudgetBar';
+import { Icon } from '../common/Icon';
 import { formatINR } from '../../utils/format';
 import type { Totals, PackageItem } from '../../api/types';
 
@@ -9,164 +11,80 @@ interface PriceBreakdownProps {
   travelerCount?: number;
   onConfirm: () => void;
   confirming?: boolean;
+  booked?: boolean;
 }
 
+/** Sticky price summary with the book button. */
 export const PriceBreakdown: React.FC<PriceBreakdownProps> = ({
   totals,
   items = [],
   totalPrice,
-  travelerCount = 3,
+  travelerCount = 1,
   onConfirm,
   confirming = false,
+  booked = false,
 }) => {
-  // Compute categorized sums if totals object is incomplete
-  let flightSum = totals?.flights || 0;
-  let hotelSum = totals?.hotels || 0;
-  let transferSum = totals?.transfers || 0;
-  let attractionSum = totals?.attractions || 0;
-
-  if (!totals?.flights && !totals?.hotels && items.length > 0) {
-    flightSum = items
-      .filter((it) => it.type === 'flight')
-      .reduce((sum, it) => sum + (it.price_inr ?? it.price ?? 0), 0);
-    hotelSum = items
-      .filter((it) => it.type === 'hotel')
-      .reduce((sum, it) => sum + (it.price_inr ?? it.price ?? 0), 0);
-    transferSum = items
-      .filter((it) => it.type === 'transfer')
-      .reduce((sum, it) => sum + (it.price_inr ?? it.price ?? 0), 0);
-    attractionSum = items
-      .filter((it) => it.type === 'attraction')
-      .reduce((sum, it) => sum + (it.price_inr ?? it.price ?? 0), 0);
-  }
-
-  const grandTotal =
-    totalPrice || totals?.total || flightSum + hotelSum + transferSum + attractionSum || 0;
-
-  const perPerson = Math.round(grandTotal / (travelerCount || 1));
+  const count = (type: string) => items.filter((i) => i.type === type).length;
+  const rows = [
+    { label: 'Flights', icon: 'flight', amount: totals?.flights ?? 0, n: count('flight') },
+    { label: 'Stays', icon: 'hotel', amount: totals?.hotels ?? 0, n: count('hotel') },
+    { label: 'Transfers', icon: 'directions_bus', amount: totals?.transfers ?? 0, n: count('transfer') },
+    { label: 'Activities', icon: 'attractions', amount: totals?.attractions ?? 0, n: count('attraction') },
+  ];
+  const total = totalPrice ?? totals?.total ?? rows.reduce((s, r) => s + r.amount, 0);
 
   return (
-    <div className="lg:col-span-4 flex flex-col gap-space-lg">
-      <div className="sticky top-20 flex flex-col gap-space-md">
-        {/* Main Manifest Card */}
-        <div className="bg-surface-container-lowest rounded-xl shadow-lg p-space-lg flex flex-col gap-space-md">
-          <div className="flex items-center justify-between pb-space-xs">
-            <div>
-              <h3 className="font-headline-md text-headline-md text-on-surface font-bold">
-                Holiday Manifest
-              </h3>
-              <p className="font-body-sm text-body-sm text-on-surface-variant">
-                Live Consolidated Calculation
-              </p>
-            </div>
-            <span className="px-2.5 py-1 bg-surface-container-low text-primary rounded-full font-label-sm text-label-sm font-semibold">
-              ALL-INCLUSIVE
-            </span>
-          </div>
-
-          {/* Price Breakdown Line Items */}
-          <div className="flex flex-col gap-space-sm pt-space-xs font-body-md text-body-md">
-            <div className="flex items-center justify-between">
-              <span className="text-on-surface-variant flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-primary">flight</span>
-                Flights (Return Scheduled)
-              </span>
-              <span className="font-currency-md text-currency-md font-medium text-on-surface">
-                {formatINR(flightSum)}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-on-surface-variant flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-primary">apartment</span>
-                Stays &amp; Accommodations
-              </span>
-              <span className="font-currency-md text-currency-md font-medium text-on-surface">
-                {formatINR(hotelSum)}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-on-surface-variant flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-primary">
-                  directions_subway
-                </span>
-                Transfers &amp; Ground Transit
-              </span>
-              <span className="font-currency-md text-currency-md font-medium text-on-surface">
-                {formatINR(transferSum)}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-on-surface-variant flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-primary">
-                  local_activity
-                </span>
-                Curated Experiences
-              </span>
-              <span className="font-currency-md text-currency-md font-medium text-on-surface">
-                {formatINR(attractionSum)}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between text-on-surface-variant">
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-outline">receipt</span>
-                GST, Fuel &amp; Surcharges
-              </span>
-              <span className="font-label-md text-label-md font-semibold text-primary">Included</span>
-            </div>
-          </div>
-
-          <div className="h-px w-full bg-surface-container-high my-space-xs"></div>
-
-          {/* Grand Dynamic Total */}
-          <div className="flex items-baseline justify-between">
-            <div>
-              <span className="font-label-sm text-label-sm uppercase text-on-surface-variant font-bold">
-                Total Payable (INR)
-              </span>
-              <div className="font-currency-display text-display-lg text-primary font-bold">
-                {formatINR(grandTotal)}
+    <aside className="lg:sticky lg:top-4 flex flex-col gap-3" aria-label="Price summary">
+      <div className="bg-white rounded-lg shadow-card border border-line overflow-hidden">
+        <div className="p-4">
+          <h2 className="text-lg font-bold text-ink">Price summary</h2>
+          <dl className="mt-3 space-y-2 text-sm">
+            {rows.map((r) => (
+              <div key={r.label} className="flex items-center justify-between">
+                <dt className="text-ink-soft flex items-center gap-2">
+                  <Icon name={r.icon} className="!text-base text-ink-mute" />
+                  {r.label}
+                  <span className="text-ink-mute">({r.n})</span>
+                </dt>
+                <dd className="tabular-nums text-ink">{r.amount === 0 && r.n > 0 ? 'Free' : formatINR(r.amount)}</dd>
               </div>
-            </div>
-            <div className="text-right">
-              <span className="font-label-sm text-label-sm text-primary font-semibold">
-                TCS compliant
-              </span>
-              <div className="font-body-sm text-body-sm text-on-surface-variant">
-                {formatINR(perPerson)} / person
-              </div>
-            </div>
+            ))}
+          </dl>
+        </div>
+        <div className="bg-brand-light p-4">
+          <div className="flex items-end justify-between">
+            <span className="font-semibold text-ink">Total</span>
+            <span className="text-2xl font-extrabold text-ink tabular-nums">{formatINR(total)}</span>
           </div>
-
-          {/* Primary Action */}
+          <p className="text-right text-xs text-ink-mute mt-0.5">
+            {formatINR(Math.round(total / (travelerCount || 1)))} per traveler · includes taxes
+          </p>
+          {totals?.budget ? <BudgetBar total={total} budget={totals.budget} className="mt-3" /> : null}
+        </div>
+        <div className="p-4">
           <button
             type="button"
             onClick={onConfirm}
             disabled={confirming}
-            className="w-full py-3.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-sm text-headline-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-60 cursor-pointer"
+            className={`w-full h-12 rounded-md font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60 ${
+              booked ? 'bg-ok hover:brightness-95' : 'bg-brand hover:bg-brand-dark'
+            }`}
           >
-            <span className="material-symbols-outlined text-[22px]">lock</span>
-            <span>{confirming ? 'Locking Price...' : 'Lock Price & Confirm Holiday'}</span>
+            <Icon name={booked ? 'confirmation_number' : 'lock'} />
+            {confirming ? 'Please wait…' : booked ? 'View your booking' : 'Book this trip'}
           </button>
-          <p className="font-body-sm text-body-sm text-center text-on-surface-variant">
-            Instant booking confirmation with 24-hour free cancellation grace period.
-          </p>
-        </div>
-
-        {/* Trust & Concierge Guarantees */}
-        <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-on-surface font-label-md text-label-md font-semibold">
-            <span className="material-symbols-outlined text-primary text-[18px]">verified</span>
-            <span>Build My Holiday Assurance</span>
-          </div>
-          <p className="font-body-sm text-body-sm text-on-surface-variant">
-            Every package is audited for seamless inter-modal connections with at least 90 minutes buffer time between arrivals and check-ins.
-          </p>
+          {!booked && (
+            <ul className="mt-3 space-y-1 text-xs text-ink-soft">
+              <li className="flex items-center gap-1.5">
+                <Icon name="check" className="!text-sm text-ok" /> One booking number for everything
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Icon name="check" className="!text-sm text-ok" /> Seats and rooms are checked when you book
+              </li>
+            </ul>
+          )}
         </div>
       </div>
-    </div>
+    </aside>
   );
 };
