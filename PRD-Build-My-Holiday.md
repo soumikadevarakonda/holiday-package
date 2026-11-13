@@ -248,7 +248,7 @@ build-my-holiday/
 
 ## 9. Data model (MySQL 8)
 
-MySQL stores only app state: requests, packages and their versions, reservations and inventory use. The read-only catalog stays in the JSON files and loads into memory at boot (trade-off T1 in section 12). Full package details go in a JSON column, because the export format is JSON and the shape is nested. Indexed scalar columns sit beside it.
+MySQL stores the **catalog**, in tables that follow the ER diagram in `database/travel_platform_er_diagram.md`, plus **app state**: requests, packages and their versions, reservations and inventory use. The catalog tables are seeded from the read-only JSON files on startup and loaded into memory once at boot, so the engine never queries MySQL per request (trade-off T1 in section 12). The table-by-table schema is in `database/README.md`; the app-state tables are below. Full package details go in a JSON column, because the export format is JSON and the shape is nested. Indexed scalar columns sit beside it.
 
 | Table | Key columns | Purpose |
 | --- | --- | --- |
@@ -343,7 +343,7 @@ Each decision favours correctness and build speed in 9–10 hours over scale we 
 
 | ID | Decision | Chosen | Rejected | Why |
 | --- | --- | --- | --- | --- |
-| T1 | Where the catalog lives | JSON files → in-memory Python indexes at boot | Seeding the catalog into MySQL tables | About 3,300 records in total (469 flights, 2,500 room-nights, 66 transfers, 56 attractions) load in milliseconds. Files stay untouched. Cost: no SQL joins over the catalog. Mitigation: show the loader in the code walkthrough |
+| T1 | Where the catalog lives | JSON files (read-only source) → MySQL catalog tables following the ER diagram (seeded on startup when the files change) → in-memory Python indexes at boot | JSON → memory only (no catalog tables); querying MySQL per request | A normalised catalog schema shows the data model to judges (engineering quality 15%) and allows SQL joins. Loading about 3,300 records into memory once keeps the builder fast and unit-testable. Files stay untouched. Cost: a seed step and two copies of the catalog (JSON + tables), kept in sync by a source hash |
 | T2 | Package storage | JSON column + versions table | Fully normalised item tables | The export is JSON already; versions give undo and optimistic locking. Cost: harder ad-hoc SQL on items, irrelevant here |
 | T3 | Search method | Exhaustive city-plan enumeration + greedy per component | Constraint solver (OR-Tools), ILP | At most 135 plans for Japan at 10 nights, and 2–4 for the UAE. Deterministic and explainable. Greedy hotels are optimal per city. Cost: attraction placement is not globally optimal (rules don't require it), and plans grow as O(C⁵) with cities; the scaling path is in section 7 |
 | T4 | Validation | One validator used everywhere (build, change, confirm, export) | Checks spread across endpoints | Single source of truth; a change can never bypass a rule. Cost: re-validating the whole package each change (milliseconds) |

@@ -4,33 +4,43 @@ Goal: every backend API in [PRD-Build-My-Holiday.md](PRD-Build-My-Holiday.md) se
 
 The split lets both people work at the same time without blocking each other:
 
-- **Person A (Engine):** the pure Python logic. Catalog, pricing, rules, builder, change options, quick-request parser. No database, no HTTP (except two read-only endpoints).
+- **Person A (Engine):** the pure Python logic. Catalog, pricing, rules, builder, change options, quick-request parser. No HTTP except two read-only endpoints, and no database except loading the catalog tables once at startup.
 - **Person B (API + DB):** everything that touches HTTP or MySQL. Routers, schemas, database, packages, changes, export, reservations, inventory.
 
 They meet at **5 engine functions** with fixed signatures (section 3). Person A ships **stubs** of these in the first hour, so Person B can build and test every endpoint against fake-but-valid data while A writes the real logic. When A replaces a stub, B's endpoints start returning real packages with no code change.
 
 ---
 
-## 1. Phase 0 — together (first ~1 hour)
+## 1. Phase 0 — ✅ complete
 
-Do this together on one machine, commit it to `main`, and then split.
+Phase 0 is done and goes to `main` before the split. Both people should still read [data/problem-1-holiday-package.md](data/problem-1-holiday-package.md) (the official brief) and [data/DATA_DICTIONARY.md](data/DATA_DICTIONARY.md), including the FAQ.
 
-| # | Task | Files |
-|---|---|---|
-| 0.1 | Settings from `.env` (`DB_URL`, `DATA_DIR`, ports) | `backend/app/core/config.py`, `.env.example` |
-| 0.2 | Error shape `{code, message, details}` + `AppError` + exception handlers | `backend/app/core/errors.py` |
-| 0.3 | FastAPI app, CORS, router mounting, `GET /api/health`, serve `data/images` at `/images` (StaticFiles) | `backend/app/main.py` |
-| 0.4 | **Shared package model** (dataclasses: `TripRequest`, `Package`, `Item`, `CityStay`, `Totals`, `Violation`) | `backend/app/core/package_model.py` *(new file)* |
-| 0.5 | **Freeze the 5 engine signatures** (section 3) and write stubs for them | see section 3 |
-| 0.6 | One hand-written valid Menon package in trip format | `backend/tests/fixtures/menon_package.json` *(new file)* |
-| 0.7 | Agree the MySQL schema (columns from PRD section 9) | `database/schema/*.sql` (B writes them after) |
-| 0.8 | Python deps + pytest config | `backend/requirements.txt`, `backend/pytest.ini` |
+| # | Task | Status | Files |
+|---|---|---|---|
+| 0.1 | Settings from `.env` (`DB_URL`, `DATA_DIR`, `DATABASE_DIR`, ports, CORS, `DB_AUTO_INIT`) | ✅ | `backend/app/core/config.py`, `.env.example` |
+| 0.2 | Error shape `{code, message, details}`, `AppError`, handlers (422 → `INVALID_INPUT` with `field_errors`) | ✅ | `backend/app/core/errors.py` |
+| 0.3 | FastAPI app, CORS, all 6 routers mounted (empty), `GET /api/health`, `/images` static files | ✅ | `backend/app/main.py`, `*/router.py` |
+| 0.4 | **Shared model**: `TripRequest`, `Package` (+ `to/from_trip_format`), `Item`, `CityStay`, `Totals`, `Violation`, `BuildResult`, `CityPlanSummary`, `Option`, `Change`, `ChangeResult` | ✅ | `backend/app/core/package_model.py` |
+| 0.5 | **5 engine signatures frozen + stubs** (section 3) | ✅ | `builder/search.py`, `rules/validator.py`, `changes/options.py`, `changes/side_effects.py`, `catalog/store.py`, `app/stubs.py` |
+| 0.6 | Menon package from real catalog IDs (Tokyo 3 + Kyoto 3, ₹2,34,710) | ✅ | `backend/tests/fixtures/menon_package.json` |
+| 0.7 | **MySQL schema from the ER diagram** (catalog) + app-state tables | ✅ | `database/init/000_create_database.sql`, `database/schema/001–010_*.sql`, `database/README.md` |
+| 0.8 | Apply schema + seed catalog from JSON (on startup, or by hand) | ✅ | `backend/app/core/migrate.py`, `backend/app/catalog/seed.py`, `database/scripts/*.sh` |
+| 0.9 | DB engine + per-request transaction + ping | ✅ | `backend/app/core/database.py` |
+| 0.10 | Python deps, pytest config, `__init__.py` everywhere, Phase 0 tests (8 passing) | ✅ | `backend/requirements.txt`, `backend/pytest.ini`, `backend/tests/conftest.py`, `backend/tests/test_phase0.py` |
+| 0.11 | Docker + no-Docker start, `.gitignore` | ✅ | `docker-compose.yml`, `backend/Dockerfile`, `start.sh`, `.gitignore` |
 
-**Exit check:** `uvicorn app.main:app` starts, `/docs` loads, `GET /api/health` returns `200`, `/images/attractions/ATT-KYO-001.jpg` and `/images/ATTRIBUTIONS.md` open.
+**Exit check:** `uvicorn app.main:app` starts and `/docs` loads. `GET /api/health` returns `200` with `"db": true, "catalog_seeded": true`. `/images/attractions/ATT-KYO-001.jpg` and `/images/ATTRIBUTIONS.md` open. `pytest` is green. The steps are in section 9.
 
-**Before Phase 0, both people read** [data/problem-1-holiday-package.md](data/problem-1-holiday-package.md) (the official brief) and [data/DATA_DICTIONARY.md](data/DATA_DICTIONARY.md), including the FAQ at the end. The real catalog is already in `data/catalog/`, so A's loader and B's fixture use real IDs from day one.
+### Database design (from the ER diagram)
 
-> `core/package_model.py` is the only shared file after Phase 0. Changing it needs both people to agree.
+The catalog now lives in **MySQL tables that follow [database/travel_platform_er_diagram.md](database/travel_platform_er_diagram.md)**: `country`, `destination_city`, `airport`, `city_airport`, `departure_city`, `flight`, `hotel`, `room`, `room_availability`, `transfer` + `airport_transfer` / `city_transfer` / `intercity_transfer`, `intercity_link`, `link_transfer` and `attraction`.
+
+- `data/catalog/*.json` stays the read-only source. `catalog/seed.py` copies it into the tables on startup, and only when the files change.
+- At M-1, Person A's `catalog/loader.py` reads these tables **once at startup** into the in-memory `CatalogStore`. The engine never queries MySQL per request, so it stays fast and testable.
+- The ER diagram shows key columns only. The schema adds every field the rules need (prices, service hours, opening days, …). The differences are listed in [database/README.md](database/README.md).
+- The app-state tables (`trip_requests`, `packages`, `package_versions`, `reservations`, `inventory_usage`) are now `006–010`.
+
+> Shared files after Phase 0: `core/package_model.py`, `core/config.py` and `main.py` (router and startup lines only). Changing them needs both people to agree.
 
 ---
 
@@ -43,9 +53,9 @@ Do this together on one machine, commit it to `main`, and then split.
 | `backend/app/core/timeutil.py` | `HH:MM` and `24:00` parsing, windows past midnight, inclusive ends, weekday | all |
 | `backend/app/core/money.py` | Integer INR helpers | M5 |
 | `backend/app/catalog/models.py` | Dataclasses for every catalog record (keep hotel / attraction `image`) | M1 |
-| `backend/app/catalog/loader.py` | Read `data/catalog/*.json` → models (the only file that knows raw field names). Unwrap `{amount, currency}` prices; parse `YYYY-MM-DDTHH:MM:SS` times; treat missing optional fields as absent | M1 |
+| `backend/app/catalog/loader.py` | Read the MySQL catalog tables (seeded in Phase 0) → models, once at startup. Prices are already int INR; `child_price` NULL ≠ 0; JSON columns (`open_days`, `closed_dates`, `aliases`) → lists. Call it from the `lifespan` in `main.py` | M1 |
 | `backend/app/catalog/indexes.py` | Lookup dicts (flights by airport + date, availability by room + date, …) | all |
-| `backend/app/catalog/store.py` | `CatalogStore` singleton + query functions | all |
+| `backend/app/catalog/store.py` | Replace the stub: `CatalogStore` singleton with models, indexes, query functions; set `loaded = True` | all |
 | `backend/app/catalog/router.py` | **`GET /api/meta`** | M1 |
 | `backend/app/pricing/calculator.py` | Price formulas (flight, hotel, transfer, attraction) | M5, P1 |
 | `backend/app/pricing/totals.py` | Line items → total, budget left / over | M5 |
@@ -57,7 +67,7 @@ Do this together on one machine, commit it to `main`, and then split.
 | `backend/app/changes/side_effects.py` | Re-time transfers, drop attractions that no longer fit, warnings | G1 |
 | `backend/app/parser/quick_request.py` | Regex parser for plain text | S1 |
 | `backend/app/parser/router.py` | **`POST /api/parse`** | S1 |
-| `backend/tests/conftest.py` | Load the real catalog once | — |
+| `backend/tests/conftest.py` | Add a fixture that loads the real catalog once (keep the Phase 0 `client` / `menon` fixtures) | — |
 | `backend/tests/fixtures/requests.json` | Menon, UAE, DEL, 1A+3C, 8 travelers, late KIX, early return, bad date, tiny budget | — |
 | `backend/tests/unit/*` | `test_timeutil`, `test_pricing`, `test_rules`, `test_city_plans`, `test_builder` | — |
 | `backend/tests/oracle/test_fast_vs_brute.py` | Fast and brute search give the same totals | — |
@@ -66,12 +76,9 @@ Do this together on one machine, commit it to `main`, and then split.
 
 | Folder / file | What it does | Features |
 |---|---|---|
-| `database/init/000_create_database.sql` | Create DB, user, grants | — |
-| `database/schema/001–005_*.sql` | `trip_requests`, `packages`, `package_versions`, `reservations`, `inventory_usage` | — |
-| `database/seeds/demo_reset.sql`, `database/scripts/*.sh` | Reset and apply scripts | — |
-| `database/README.md` | How to apply / reset | — |
-| `docker-compose.yml`, `backend/Dockerfile`, `start.sh` | Start everything in 1–2 commands | — |
-| `backend/app/core/database.py` | SQLAlchemy engine + session dependency | — |
+| `database/schema/006–010_*.sql` | App-state tables (written in Phase 0). Extend them if needed with a new numbered file, never by editing a file already applied | — |
+| `docker-compose.yml`, `start.sh` | Add the frontend service / start command after M-2 | — |
+| `backend/app/core/database.py` | Written in Phase 0 (`get_db`, `db_ping`); add helpers if needed | — |
 | `backend/app/packages/schemas.py` | Pydantic request/response models, M1 field checks (`422`) | M1 |
 | `backend/app/packages/repository.py` | Save / load requests, packages, versions | M2 |
 | `backend/app/packages/service.py` | Validate request → `build()` → save version → response | M2, M8 |
@@ -96,15 +103,25 @@ Person A owns these functions. Person B only **calls** them. The signatures are 
 
 | # | Function (file) | Returns | Used by B in |
 |---|---|---|---|
-| 1 | `build(req: TripRequest, mode="default") -> BuildResult` (`builder/search.py`) | `BuildResult(outcome, package, alternatives, city_plans, cheapest_total, over_by, suggestion, reason)`; `outcome` ∈ `PACKAGE`, `OVER_BUDGET`, `NO_PACKAGE` | `packages/service.py` |
+| 1 | `build(req: TripRequest, mode="default", strategy="fast") -> BuildResult` (`builder/search.py`) | `BuildResult(outcome, package, alternatives, city_plans, cheapest_total, over_by, suggestion, reason)`; `outcome` ∈ `PACKAGE`, `OVER_BUDGET`, `NO_PACKAGE` | `packages/service.py` |
 | 2 | `rebuild(req, city_plan) -> BuildResult` (`builder/search.py`) | Same as above, on one plan | `packages/service.py` |
 | 3 | `validate(pkg: Package) -> list[Violation]` (`rules/validator.py`) | Empty list = valid | `changes/apply.py`, `reservations/service.py`, `export/router.py` |
 | 4 | `options(pkg, kind, **params) -> list[Option]` (`changes/options.py`) | `kind` ∈ `hotel`, `flight`, `attraction`; each option has `price_diff` | `changes/router.py` |
 | 5 | `apply_change(pkg, change) -> ChangeResult` (`changes/side_effects.py`) | `ChangeResult(package, side_effects, warnings)` — new package, **not yet validated** | `changes/apply.py` |
 
-Plus the catalog accessor `get_store() -> CatalogStore` for B's inventory checks and `seats_left` / `rooms_left`.
+Plus the catalog accessor `get_store() -> CatalogStore` (`catalog/store.py`) for B's inventory checks and `seats_left` / `rooms_left`. All types live in `core/package_model.py`.
 
-**Stubs (Person A, end of Phase 0):** each function exists with the final signature and returns data built from `tests/fixtures/menon_package.json`. `validate()` returns `[]`. Commit the stubs to `main`, so B is never blocked.
+**Stubs (✅ in Phase 0):** every function exists with its final signature and returns data from `tests/fixtures/menon_package.json` through `app/stubs.py`.
+
+| Stub | Phase 0 behaviour |
+|---|---|
+| `build` / `rebuild` | Always `PACKAGE` with the Menon package (budget set from the request); `mode="three"` fills all 3 alternatives |
+| `validate` | Always `[]` |
+| `options` | The current choice only, `price_diff = 0` |
+| `apply_change` | `remove_attraction` works; other changes return the package unchanged with a "(stub)" side effect |
+| `get_store` | Empty store, `loaded = False` |
+
+Person A replaces them one at a time. Delete `app/stubs.py` when none use it.
 
 ---
 
@@ -138,8 +155,8 @@ Person B owns more endpoints, but most are thin. Person A owns the hard logic be
 
 | Milestone | Person A delivers | Person B delivers | Sync check (together) |
 |---|---|---|---|
-| **Phase 0** (h 0–1) | Package model, stubs, Menon fixture | DB schema agreed | App starts, `/docs` loads |
-| **M-1** (h 1–3) | `timeutil`, catalog loader + indexes, `GET /api/meta`, pricing + tests | MySQL up (Docker), repositories, endpoints 4, 5, 12, 15 working on stubs; reservation number | `GET /api/meta` real; build → get → undo → confirm → lookup work end-to-end on the stub package |
+| **Phase 0** ✅ | Package model, stubs, Menon fixture | ER schema, seed, DB plumbing, Docker | App starts, `/docs` loads, catalog seeded, 8 tests green |
+| **M-1** (h 1–3) | `timeutil`, catalog loader (MySQL → memory) + indexes, `GET /api/meta`, pricing + tests | Repositories, endpoints 4, 5, 12, 15 working on stubs; reservation number | `GET /api/meta` real; build → get → undo → confirm → lookup work end-to-end on the stub package |
 | **M-2** (h 3–5) | All rule checks with one pass + one fail test each; real `build()` for Menon | Timeline, export, confirm transaction, city-plans; `tests/api` for packages + reservations | **Real** Menon package builds, exports, validates (`[]`) and confirms |
 | **M-3** (h 5–7) | `build()` outcomes `OVER_BUDGET` / `NO_PACKAGE` with reasons; `options()`; `apply_change()` | Options + PATCH endpoints, `409 RULE_VIOLATION`, `409 VERSION_CONFLICT`; `tests/api` for changes | Change hotel, flight, attraction; a bad change is refused; tiny budget gives M8 |
 | **M-4** (h 7–9) | G4 `mode="three"`, `rebuild()`, parser + `POST /api/parse`, fast vs brute oracle | Rebuild endpoint, S2 inventory in confirm, `start.sh` | All 15 endpoints real; full test suite green |
@@ -153,7 +170,7 @@ After M-2 the frontend can start against the real API.
 **Person A (engine)**
 
 1. Write a unit test first for each rule ID and each price formula (pass case + fail case).
-2. Never import FastAPI, SQLAlchemy or a repository in `catalog/`, `pricing/`, `rules/` or `builder/`.
+2. Never import FastAPI, SQLAlchemy or a repository in `catalog/`, `pricing/`, `rules/` or `builder/`. The exceptions are `catalog/seed.py` and `catalog/loader.py`, which run only at startup.
 3. Replace one stub at a time; keep its signature exactly.
 4. Run `pytest tests/unit tests/oracle` before every push.
 
@@ -185,3 +202,70 @@ An endpoint is done when:
 3. It has at least one passing test in `tests/api` (B) or `tests/unit` (A).
 4. Any package it returns or stores passes `validate()`.
 5. It survives a backend restart (anything stored is read back from MySQL).
+
+---
+
+## 9. Running the backend after Phase 0
+
+### Option A: local MySQL (Windows, no Docker)
+
+Run these from the repo root in Git Bash. PowerShell equivalents are noted where they differ.
+
+1. **Create the database and dev user** (once). It asks for your MySQL root password:
+   ```bash
+   mysql -u root -p < database/init/000_create_database.sql
+   ```
+   This creates database `holiday` and user `holiday` / `holiday`.
+2. **Create `.env`** (once):
+   ```bash
+   cp .env.example .env            # PowerShell: Copy-Item .env.example .env
+   ```
+   The default `DB_URL=mysql+pymysql://holiday:holiday@localhost:3306/holiday` matches step 1.
+3. **Install Python deps** (once). The venv is already created in `backend/.venv`:
+   ```bash
+   cd backend
+   python -m venv .venv            # only if .venv is missing
+   source .venv/Scripts/activate   # PowerShell: .venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   ```
+4. **Start the API:**
+   ```bash
+   uvicorn app.main:app --reload --port 8000
+   ```
+   On startup it applies `database/schema/*.sql` and seeds the catalog tables from `data/catalog`. The first start takes a few seconds; later starts skip the seed.
+5. **Check it:**
+   - http://localhost:8000/api/health → `"status": "ok", "db": true, "catalog_seeded": true`
+   - http://localhost:8000/docs → Swagger UI
+   - http://localhost:8000/images/ATTRIBUTIONS.md → photo credits
+6. **Run the tests** (from `backend/`, venv active):
+   ```bash
+   pytest
+   ```
+
+Steps 2–4 in one command: `./start.sh` (Git Bash).
+
+### Option B: Docker
+
+```bash
+cp .env.example .env
+docker compose up --build       # MySQL :3306 + API :8000
+```
+
+Docker Desktop must be running. The first start creates the database (`database/init`), and the backend then creates the tables and seeds the catalog.
+
+### Useful commands (from `backend/`, venv active)
+
+| Command | Does |
+|---|---|
+| `python -m app.core.migrate` | Apply `database/schema/*.sql` by hand |
+| `python -m app.catalog.seed --force` | Re-fill the catalog tables from JSON |
+| `mysql -u holiday -pholiday holiday < ../database/seeds/demo_reset.sql` | Clear packages and reservations before a demo |
+
+### If something is wrong
+
+| Symptom | Fix |
+|---|---|
+| Health shows `"db": false` | MySQL isn't running, or `DB_URL` in `.env` is wrong. `db_init_error` in the health response says which. |
+| `Access denied for user 'holiday'` | Step 1 wasn't run, or `DB_URL` has another password |
+| `"catalog_seeded": false` with `db: true` | Read `db_init_error`; re-run `python -m app.catalog.seed --force` |
+| Port 8000 in use | `uvicorn app.main:app --reload --port 8001` |

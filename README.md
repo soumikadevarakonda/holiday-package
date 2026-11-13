@@ -29,28 +29,36 @@ Flights and rooms exist only from **1 to 20 April 2027**.
 ## Quick start
 
 ```bash
-# 1. Docker (recommended)
-docker compose up --build        # MySQL :3306, API :8000 (/docs), web :5173
+cp .env.example .env
 
-# 2. Without Docker (MySQL already running, DB_URL in .env)
-cp .env.example .env             # then set DB_URL
-./start.sh                       # applies database/schema, starts backend + frontend
+# 1. Docker (recommended)
+docker compose up --build        # MySQL :3306, API :8000 (/docs); web :5173 added later
+
+# 2. Without Docker (MySQL 8 running)
+mysql -u root -p < database/init/000_create_database.sql   # once: database `holiday` + dev user
+./start.sh                       # venv + deps, starts the API; startup creates tables and seeds the catalog
 ```
 
 | Service | URL |
 |---|---|
-| Web app | http://localhost:5173 |
+| Web app | http://localhost:5173 *(after M-2)* |
 | API | http://localhost:8000/api |
 | API docs (Swagger) | http://localhost:8000/docs |
+| Health | http://localhost:8000/api/health |
+
+Step-by-step instructions and troubleshooting: [Project.md, section 9](Project.md#9-running-the-backend-after-phase-0).
 
 ### Environment variables (`.env`)
 
 | Variable | Purpose |
 |---|---|
-| `DB_URL` | MySQL connection string, e.g. `mysql+pymysql://holiday:holiday@localhost:3306/holiday` |
-| `DATA_DIR` | Path to the catalog folder (default `./data`) |
-| `API_PORT` | Backend port (default `8000`) |
-| `WEB_PORT` | Frontend port (default `5173`) |
+| `DB_URL` | MySQL connection string, default `mysql+pymysql://holiday:holiday@localhost:3306/holiday` |
+| `DATA_DIR` | Data pack folder (default `<repo>/data`) |
+| `DATABASE_DIR` | SQL folder (default `<repo>/database`) |
+| `API_PORT` / `WEB_PORT` | Backend / frontend ports (`8000` / `5173`) |
+| `CORS_ORIGINS` | Allowed frontend origins |
+| `DB_AUTO_INIT` | `true`: apply `database/schema` and seed the catalog on startup |
+| `MYSQL_ROOT_PASSWORD` | Docker only: root password of the MySQL container |
 
 ---
 
@@ -67,21 +75,27 @@ flowchart TB
     RT --> VAL["Validator<br/>every rule, by ID"]
     RT --> PRC["Pricing<br/>INR line items, total"]
   end
-  BE -->|read-only| CAT["Catalog store (in-memory)<br/>loaded once from data/catalog/*.json"]
-  BE -->|SQLAlchemy| DB[("MySQL 8<br/>trip_requests · packages · package_versions<br/>reservations · inventory_usage")]
+  BE -->|read-only, per request| CAT["Catalog store (in-memory)<br/>loaded once at startup"]
+  JSON["data/catalog/*.json<br/>(read-only source)"] -->|seed on startup| CDB
+  CDB -->|load once| CAT
+  subgraph DB["MySQL 8"]
+    CDB[("Catalog tables (ER diagram)<br/>country · city · airport · flight · hotel · room<br/>availability · transfer + subtypes · attraction")]
+    ADB[("App state<br/>trip_requests · packages · package_versions<br/>reservations · inventory_usage")]
+  end
+  BE -->|SQLAlchemy| ADB
 ```
 
 - **Frontend** displays only. It computes no prices, rules or city choices; it renders what the API returns.
 - **Backend** holds all logic. Builder, change, confirm and export all call the same validator and pricing on the whole package.
-- **Catalog** (`data/catalog/`) is read-only and loaded into memory at startup. It is never edited. Photos in `data/images/` are served as static files at `/images`.
-- **MySQL** stores app state only: requests, packages and their versions, reservations, and inventory use.
+- **Catalog**: the backend copies `data/catalog/*.json` into MySQL tables that follow the [ER diagram](database/travel_platform_er_diagram.md). It then loads those tables into memory once at startup. The JSON files are never edited. Photos in `data/images/` are served as static files at `/images`.
+- **MySQL** also stores app state: requests, packages and their versions, reservations, and inventory use. See [database/README.md](database/README.md).
 
 ### Repository layout
 
 ```
 ├── data/        # provided data pack (brief, dictionary, catalog, images), untouched
 ├── docs/        # PRD and project structure
-├── database/    # MySQL init, schema (001–005), seeds, scripts
+├── database/    # ER diagram, MySQL init, schema (001–005 catalog, 006–010 app state), seeds, scripts
 ├── backend/     # FastAPI app: core, catalog, pricing, rules, builder,
 │                # packages, changes, export, reservations, inventory, parser
 └── frontend/    # React app: api client, pages, components, hooks

@@ -52,35 +52,53 @@ build-my-holiday/
 
 ## 2. `database/`
 
-MySQL stores **app state only** (requests, packages, versions, reservations, inventory use). The catalog stays in `data/` and is loaded into memory by the backend.
+MySQL holds two groups of tables:
+
+- **Catalog tables**, following the ER diagram in [database/travel_platform_er_diagram.md](database/travel_platform_er_diagram.md). They are seeded from `data/catalog/*.json`, which stays the read-only source.
+- **App-state tables**: requests, packages, versions, reservations and inventory use.
+
+The backend reads the catalog tables **once at startup** into in-memory indexes. The engine never queries MySQL per request.
 
 ```
 database/
-├── README.md                          # how the schema is applied, how to reset
+├── README.md                          # tables, how they are applied and seeded, differences from the ER diagram
+├── travel_platform_er_diagram.md      # ER diagram of the catalog (Mermaid)
 ├── init/
-│   └── 000_create_database.sql        # CREATE DATABASE holiday; user + grants (run by docker on first start)
-├── schema/                            # applied in order, idempotent (CREATE TABLE IF NOT EXISTS)
-│   ├── 001_trip_requests.sql
-│   ├── 002_packages.sql
-│   ├── 003_package_versions.sql       # UNIQUE(package_id, version_no)
-│   ├── 004_reservations.sql           # reference CHAR(10) PRIMARY KEY, package_id UNIQUE
-│   └── 005_inventory_usage.sql        # S2: seats/rooms consumed by confirmed bookings
+│   └── 000_create_database.sql        # CREATE DATABASE holiday; dev user holiday/holiday (docker runs it on first start)
+├── schema/                            # applied in order on backend startup, idempotent (CREATE TABLE IF NOT EXISTS)
+│   ├── 001_catalog_geography.sql      # country, destination_city, airport, city_airport, departure_city, catalog_meta
+│   ├── 002_catalog_flights.sql        # flight
+│   ├── 003_catalog_hotels.sql         # hotel, room, room_availability
+│   ├── 004_catalog_transfers.sql      # transfer + airport_/city_/intercity_transfer subtypes, intercity_link, link_transfer
+│   ├── 005_catalog_attractions.sql    # attraction
+│   ├── 006_trip_requests.sql
+│   ├── 007_packages.sql
+│   ├── 008_package_versions.sql       # UNIQUE(package_id, version_no)
+│   ├── 009_reservations.sql           # reference CHAR(10) PRIMARY KEY, package_id UNIQUE
+│   └── 010_inventory_usage.sql        # S2: seats/rooms consumed by confirmed bookings
 ├── seeds/
-│   └── demo_reset.sql                 # dev only: TRUNCATE all app tables before the demo
+│   └── demo_reset.sql                 # dev only: TRUNCATE app-state tables before the demo (keeps catalog)
 └── scripts/
-    ├── apply_schema.sh                # runs init/ + schema/ against DB_URL (non-Docker setup)
-    └── reset_db.sh                    # drop + recreate app tables (dev only)
+    ├── apply_schema.sh                # python -m app.core.migrate + python -m app.catalog.seed (by hand)
+    └── reset_db.sh                    # drop + recreate the database (dev only, needs root)
 ```
 
-| Table | Purpose | Written by module |
+| Table | Purpose | Written by |
 |---|---|---|
+| `country`, `destination_city`, `airport`, `city_airport`, `departure_city` | Countries, cities, which airport serves which city | `catalog/seed.py` |
+| `flight` | Flights (local times, price per seat, seats left) | `catalog/seed.py` |
+| `hotel`, `room`, `room_availability` | Hotels, room types, rooms left per night | `catalog/seed.py` |
+| `transfer` + `airport_transfer` / `city_transfer` / `intercity_transfer` | Transfers, one subtype row each | `catalog/seed.py` |
+| `intercity_link`, `link_transfer` | Connected city pairs and their allowed transfers (CT1) | `catalog/seed.py` |
+| `attraction` | Attractions (hours, days, closed dates, prices) | `catalog/seed.py` |
+| `catalog_meta` | `rules` block from destinations.json + source hash | `catalog/seed.py` |
 | `trip_requests` | Validated request as entered | `packages` |
 | `packages` | One row per built package (status, current version, total) | `packages` |
 | `package_versions` | Every accepted change = new version (JSON body in trip format) | `packages`, `changes` |
 | `reservations` | Frozen snapshot at confirm, 10-digit reference | `reservations` |
 | `inventory_usage` | S2: seats and rooms used per flight / room-night | `inventory` |
 
-In Docker, `docker-compose.yml` mounts `database/init` and `database/schema` into `/docker-entrypoint-initdb.d/`, so the schema is created automatically on the first `docker compose up`.
+**How tables get created:** on startup (`DB_AUTO_INIT=true`) the backend runs `database/schema/*.sql` (`core/migrate.py`) and seeds the catalog tables (`catalog/seed.py`). The seed is skipped when the JSON files' hash is unchanged. In Docker, only `database/init` is mounted into `/docker-entrypoint-initdb.d/`, which creates the database and user. Where the schema differs from the ER diagram is listed in [database/README.md](database/README.md).
 
 ---
 
@@ -88,17 +106,20 @@ In Docker, `docker-compose.yml` mounts `database/init` and `database/schema` int
 
 ```
 backend/
-├── requirements.txt           # fastapi, uvicorn, pydantic, sqlalchemy, pymysql, pytest, httpx
+├── requirements.txt           # fastapi, uvicorn, pydantic(-settings), sqlalchemy, pymysql, cryptography, pytest, httpx
 ├── Dockerfile
 ├── pytest.ini
-├── app/
-│   ├── main.py                # create FastAPI app, CORS, mount routers, load catalog on startup,
+├── app/                       # every folder has an __init__.py
+│   ├── main.py                # create FastAPI app, CORS, error handlers, mount routers, GET /api/health;
+│   │                          # startup: apply schema + seed catalog (+ load catalog into memory at M-1);
 │   │                          # serve data/images at /images (StaticFiles; also serves
 │   │                          # /images/ATTRIBUTIONS.md for the photo credits page)
+│   ├── stubs.py               # PHASE 0 ONLY: Menon fixture for the engine stubs; delete when all are real
 │   │
 │   ├── core/                  # shared plumbing, no business rules
-│   │   ├── config.py          # settings from env: DATA_DIR, DB_URL, ports
-│   │   ├── database.py        # SQLAlchemy engine + session dependency
+│   │   ├── config.py          # settings from env / .env: DB_URL, DATA_DIR, DATABASE_DIR, ports, CORS, DB_AUTO_INIT
+│   │   ├── database.py        # SQLAlchemy Core engine, get_db() per-request transaction, db_ping()
+│   │   ├── migrate.py         # apply database/schema/*.sql in order (python -m app.core.migrate)
 │   │   ├── errors.py          # AppError(code, message, details) + exception handlers → {code, message, details}
 │   │   ├── package_model.py   # shared dataclasses: TripRequest, Package, Item, CityStay, Totals
 │   │   │                      # (the contract between engine and API, see Project.md)
@@ -106,11 +127,12 @@ backend/
 │   │   │                      # weekday of a date, minutes math (single tested helper)
 │   │   └── money.py           # integer INR helpers, formatting
 │   │
-│   ├── catalog/               # READ-ONLY catalog: load JSON once, build indexes       (M1, all)
+│   ├── catalog/               # READ-ONLY catalog: seed MySQL, load once, build indexes  (M1, all)
+│   │   ├── seed.py            # data/catalog/*.json → MySQL catalog tables (python -m app.catalog.seed);
+│   │   │                      # the only file that knows raw JSON field names; unwraps {amount, currency}
 │   │   ├── models.py          # dataclasses: Airport, Flight, Hotel, RoomType, Availability,
 │   │   │                      # Transfer, Attraction, Country, CityLink (hotel/attraction keep `image`)
-│   │   ├── loader.py          # read data/catalog/*.json → models (only file that knows raw field names);
-│   │   │                      # parses "YYYY-MM-DDTHH:MM:SS" catalog times, {amount, currency} prices
+│   │   ├── loader.py          # read the MySQL catalog tables → models (once, at startup)
 │   │   ├── indexes.py         # dicts: flights by (airport, local date), rooms by hotel,
 │   │   │                      # availability by (room_id, date), transfers by (airport, city, area)
 │   │   │                      # and (from_city, to_city), attractions by city, airports by served city
@@ -178,7 +200,8 @@ backend/
 │       └── router.py          # POST /api/parse
 │
 └── tests/
-    ├── conftest.py            # loads the real catalog once, test DB session
+    ├── conftest.py            # app client (DB_AUTO_INIT off), Menon fixture; real catalog added at M-1
+    ├── test_phase0.py         # Phase 0 exit checks: health, docs, images, error shape, stubs, ER mapping
     ├── fixtures/
     │   ├── requests.json      # Menon, UAE, DEL/BOM/MAA, 1A+3C, 8 travelers, 22:50 KIX landing,
     │   │                      # 11:00 return, start 18 Apr (no package), tiny budget (M8)
@@ -215,8 +238,8 @@ domain:   builder ──► rules ──► pricing ──► catalog ──► 
 repositories (packages, reservations, inventory) ──► core/database ──► MySQL
 ```
 
-- `catalog`, `pricing`, `rules` and `builder` never import a router, a repository or SQLAlchemy.
-- Only `catalog/loader.py` reads raw JSON field names. Everything else uses the dataclasses.
+- `catalog`, `pricing`, `rules` and `builder` never import a router, a repository or SQLAlchemy. The only exceptions are `catalog/seed.py` and `catalog/loader.py`, which run at startup and fill the in-memory store.
+- Only `catalog/seed.py` reads raw JSON field names, and only `catalog/loader.py` reads the catalog tables. Everything else uses the dataclasses.
 - Every path that returns or stores a package calls `rules.validator.validate()` first.
 
 ---
@@ -321,8 +344,9 @@ The frontend computes nothing: no prices, no rules, no city choice. It renders w
 
 | Person | Owns | Interface with the other person |
 |---|---|---|
-| A (engine) | `core/timeutil.py`, `catalog/`, `pricing/`, `rules/`, `builder/`, `changes/options.py` + `side_effects.py`, `tests/unit`, `tests/oracle` | Pure functions: `build(req)`, `validate(pkg)`, `options(pkg, ...)` |
-| B (API + UI + DB) | `database/`, `core/database.py`, `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `parser/`, `frontend/`, `tests/api` | API contract in `docs/PRD.md` section 10, frozen in hour 1 |
+| Both (Phase 0, **done**) | `core/config.py`, `core/errors.py`, `core/database.py`, `core/migrate.py`, `core/package_model.py`, `catalog/seed.py`, `main.py`, `stubs.py`, `database/`, router skeletons, `tests/test_phase0.py` | — |
+| A (engine) | `core/timeutil.py`, `core/money.py`, `catalog/` (models, loader, indexes, store, router), `pricing/`, `rules/`, `builder/`, `changes/options.py` + `side_effects.py`, `parser/`, `tests/unit`, `tests/oracle` | Pure functions: `build`, `rebuild`, `validate`, `options`, `apply_change` (see Project.md) |
+| B (API + UI + DB) | `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `frontend/`, `tests/api`; extends `core/database.py` and `database/` | API contract in `docs/PRD.md` section 10, frozen in Phase 0 |
 
 ---
 
@@ -330,10 +354,10 @@ The frontend computes nothing: no prices, no rules, no city choice. It renders w
 
 ```bash
 # 1. Docker (recommended)
-docker compose up --build        # MySQL :3306, API :8000 (/docs), web :5173
+docker compose up --build        # MySQL :3306, API :8000 (/docs); web :5173 added after M-2
 
-# 2. Without Docker (MySQL already running, DB_URL in .env)
-./start.sh                       # applies database/schema, starts backend + frontend
+# 2. Without Docker (MySQL 8 running; DB created once with database/init/000_create_database.sql)
+./start.sh                       # venv + deps, then uvicorn; startup applies schema and seeds catalog
 ```
 
 Run tests: `cd backend && pytest`.

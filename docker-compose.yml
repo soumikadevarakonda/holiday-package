@@ -1,0 +1,36 @@
+# docker compose up --build   ->  MySQL :3306, API :8000 (/docs)
+# The frontend service is added when frontend/ has code (after M-2).
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d:ro   # creates DB `holiday` + user on first start
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    build: ./backend
+    environment:
+      DB_URL: mysql+pymysql://holiday:holiday@mysql:3306/holiday
+      DB_AUTO_INIT: "true"          # applies database/schema and seeds the catalog on startup
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/srv/data:ro
+      - ./database:/srv/database:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:

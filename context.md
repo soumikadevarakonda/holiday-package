@@ -40,14 +40,14 @@ A hackathon web app (Problem 1) that turns 7 inputs into **one complete, rule-va
 | Frontend | React + Vite + TypeScript + Tailwind | Displays only. Computes nothing. |
 | Backend | Python, FastAPI, Pydantic, SQLAlchemy Core | All logic: builder, validator, pricing, changes |
 | Database | MySQL 8 | App state only (requests, packages, versions, reservations, inventory) |
-| Catalog | JSON files in `data/catalog/` | Read-only, loaded into memory once at startup |
+| Catalog | `data/catalog/*.json` → MySQL catalog tables (ER diagram) → in-memory store | JSON is the read-only source. Seeded into MySQL on startup, loaded into memory once; the engine never queries MySQL per request |
 | Photos | JPGs in `data/images/` | Static files at `/images`; optional in the UI, but credits must be shown if used |
 
 **Non-negotiables**
 
 1. **One validator** (`backend/app/rules/validator.py`) is used by build, every change, confirm and export. A package is valid only if `validate(package) == []`.
 2. **The frontend computes no prices, rules or city choices.** It renders what the API returns.
-3. **The catalog is never edited.** S2 inventory use is stored in MySQL (`inventory_usage`) and subtracted.
+3. **The catalog is never edited**, neither the JSON files nor the catalog tables (they are re-seeded from the JSON). S2 inventory use is stored in `inventory_usage` and subtracted.
 4. **No AI or LLM call anywhere in the app.** The S1 parser uses regex and keywords only.
 5. **Deterministic:** the same request always gives the same package (stable sorting; the only randomness is the reservation number).
 6. **Money is integer INR**, never floats.
@@ -118,7 +118,8 @@ Notation: S = start date (arrival day), N = nights, L = S + N (return day). Hote
 | Prices are objects: `{ "amount": 6440, "currency": "INR" }` | The loader unwraps `amount` to an int |
 | Every seat costs `price_per_seat`; children get no flight discount | `child_price` applies only to transfers and attractions |
 | Hotel `image` paths are shared by type (10 photos for 49 hotels); attraction `image` is `images/attractions/<id>.jpg` | Paths are relative to `data/`, so the URL is `/` + `image` |
-| Only `catalog/loader.py` knows raw JSON field names | Everything else uses the dataclasses in `catalog/models.py` |
+| Only `catalog/seed.py` knows raw JSON field names; only `catalog/loader.py` reads the catalog tables | Everything else uses the dataclasses in `catalog/models.py` |
+| In MySQL, `child_price` NULL means "no child price" and 0 means "free for children" | Never coalesce NULL to 0 when loading |
 
 ---
 
@@ -176,6 +177,24 @@ All routes are under `/api`. Errors use one shape: `{code, message, details}`. O
 
 ## 7. Database
 
+Schema files: `database/schema/` (`001–005` catalog, `006–010` app state), applied on backend startup. Details and the differences from the ER diagram are in [database/README.md](database/README.md).
+
+**Catalog tables** (ER diagram [database/travel_platform_er_diagram.md](database/travel_platform_er_diagram.md), seeded from JSON by `catalog/seed.py`):
+
+| Table | Holds |
+|---|---|
+| `country`, `destination_city` | Japan / UAE and their cities (`destination_city.name` is unique) |
+| `airport`, `city_airport` | Airports; which cities each airport serves (KIX → Osaka, Kyoto). Use `city_airport`, never `airport.city` |
+| `departure_city` | Indian departure cities and their airports |
+| `flight` | Flights, local times, `price_per_seat`, `seats_left` |
+| `hotel`, `room`, `room_availability` | Hotels, room types, `rooms_left` per night |
+| `transfer` + `airport_transfer` / `city_transfer` / `intercity_transfer` | Every transfer, plus exactly one subtype row |
+| `intercity_link`, `link_transfer` | Connected city pairs and their allowed transfers (CT1) |
+| `attraction` | Attractions (no FK on `city`: Nara) |
+| `catalog_meta` | `rules` (night limits, date window) + source hash |
+
+**App-state tables:**
+
 | Table | Purpose |
 |---|---|
 | `trip_requests` | Validated request as entered |
@@ -205,8 +224,10 @@ All routes are under `/api`. Errors use one shape: `{code, message, details}`. O
 
 | Person | Owns |
 |---|---|
-| A (engine) | `core/timeutil.py`, `catalog/`, `pricing/`, `rules/`, `builder/`, `changes/options.py` + `side_effects.py`, `tests/unit`, `tests/oracle` |
-| B (API + UI + DB) | `database/`, `core/database.py`, `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `parser/`, `frontend/`, `tests/api` |
+| A (engine) | `core/timeutil.py`, `core/money.py`, `catalog/` (models, loader, indexes, store, router), `pricing/`, `rules/`, `builder/`, `changes/options.py` + `side_effects.py`, `parser/`, `tests/unit`, `tests/oracle` |
+| B (API + UI + DB) | `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `frontend/`, `tests/api`; extends `database/` and `core/database.py` |
+
+The full split is in [Project.md](Project.md).
 
 **Build order:** all Must features (M1–M8) first and passing on 5+ test requests → G2, G1, G4, G3 → S2, S1, S3 if time remains.
 
@@ -217,6 +238,13 @@ All routes are under `/api`. Errors use one shape: `{code, message, details}`. O
 ## 10. Current status
 
 - PRD, project structure, README and backend work split (`Project.md`) written.
-- Empty file and folder skeleton created.
 - **Data pack in place** (`data/`): brief, data dictionary, 8 catalog files, trip format example, 66 photos + credits. Record counts match the PRD.
-- No feature implemented yet.
+- **Phase 0 complete:**
+  - Config, error shape, DB engine, schema migration.
+  - Catalog tables following the ER diagram, seeded from JSON on startup.
+  - App-state tables.
+  - Shared `core/package_model.py`; engine stubs returning the Menon fixture (₹2,34,710).
+  - `/api/health`, `/docs`, `/images`.
+  - Docker and `start.sh`; 8 Phase 0 tests passing.
+- **Next: M-1.** A: timeutil, catalog loader (MySQL → memory), indexes, `GET /api/meta`, pricing. B: repositories and endpoints 4, 5, 12, 15 on the stubs.
+- No M/G/S feature implemented yet. All engine functions are stubs.
