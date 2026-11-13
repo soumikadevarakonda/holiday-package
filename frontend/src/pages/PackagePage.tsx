@@ -13,6 +13,7 @@ import { Spinner } from '../components/common/Spinner';
 import { confirmPackage } from '../api/reservations';
 import { getHotelOptions, getFlightOptions, getAttractionOptions, getExportPackageUrl } from '../api/packages';
 import { formatINR, formatWeekdayDate } from '../utils/format';
+import { isFromLastResults, loadLastResults } from '../utils/lastResults';
 import type { PackageItem, ChangeOption, TimelineDay, PackageData } from '../api/types';
 
 type Kind = 'hotel' | 'flight' | 'attraction';
@@ -185,6 +186,11 @@ export const PackagePage: React.FC = () => {
   const travelerCount = (pkg.travelers?.adults || 0) + (pkg.travelers?.children || 0) || 1;
   const isBooked = packageRes.status === 'BOOKED';
   const total = packageRes.total_inr ?? packageRes.total_price;
+  const backLabel = isFromLastResults(id)
+    ? Object.keys(loadLastResults()?.outcome.alternatives || {}).length > 0
+      ? 'Back to your 3 options'
+      : 'Back to search results'
+    : undefined;
 
   return (
     <div className="flex flex-col">
@@ -193,6 +199,7 @@ export const PackagePage: React.FC = () => {
         onExportJson={() => id && window.open(getExportPackageUrl(id), '_blank')}
         onUndo={() => run(() => undo(), 'Could not undo')}
         undoing={actionLoading}
+        backLabel={backLabel}
       />
 
       <div className="max-w-6xl mx-auto px-4 w-full py-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
