@@ -17,7 +17,9 @@ export const ReservationPage: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!ref) {
+      if (!ref || !/^\d{10}$/.test(ref)) {
+        setReservation(null);
+        setNotFoundRef(ref && ref !== 'lookup' ? ref : null);
         setLoading(false);
         return;
       }
