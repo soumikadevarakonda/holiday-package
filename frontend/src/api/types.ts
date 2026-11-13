@@ -194,13 +194,24 @@ export interface ReservationResponse {
 }
 
 export interface CountryMeta {
-  country: string;
-  cities: string[];
+  code?: string;
+  name?: string;
+  country?: string;
+  timezone?: string;
+  cities?: any[];
+  links?: any[];
+}
+
+export interface DepartureCityMeta {
+  airport?: string;
+  city?: string;
+  code?: string;
+  name?: string;
 }
 
 export interface MetaResponse {
-  departure_cities: string[];
-  destination_countries: CountryMeta[] | string[];
+  departure_cities: (string | DepartureCityMeta)[];
+  destination_countries: (CountryMeta | string)[];
   rules: Record<string, any>;
   summary: Record<string, any>;
 }

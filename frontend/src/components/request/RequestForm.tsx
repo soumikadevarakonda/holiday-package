@@ -30,8 +30,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // Initialize or update from metadata or initialValues
   useEffect(() => {
     if (meta?.departure_cities && meta.departure_cities.length > 0) {
-      if (!departureCity || !meta.departure_cities.includes(departureCity)) {
-        setDepartureCity(meta.departure_cities[0]);
+      const cityCodes = meta.departure_cities.map((c) =>
+        typeof c === 'string' ? c : c.airport || c.code || c.city || ''
+      );
+      if (departureCity && !cityCodes.includes(departureCity)) {
+        if (cityCodes[0]) setDepartureCity(cityCodes[0]);
       }
     }
   }, [meta]);
@@ -137,13 +140,97 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const returnDateStr = calculateReturnDate(startDate, nights);
 
   // Available countries
-  const countries = meta?.destination_countries
-    ? Array.isArray(meta.destination_countries)
-      ? meta.destination_countries.map((c) => (typeof c === 'string' ? c : c.country))
-      : ['Japan', 'UAE']
-    : ['Japan', 'UAE'];
+  const rawCountries = meta?.destination_countries;
+  const countryList: { code: string; name: string; label: string }[] =
+    Array.isArray(rawCountries) && rawCountries.length > 0
+      ? rawCountries
+          .map((c: any) => {
+            if (typeof c === 'string') {
+              const name = c.trim();
+              if (!name) return null;
+              const lower = name.toLowerCase();
+              const label = lower.includes('japan')
+                ? '🇯🇵 Japan (Tokyo, Kyoto, Osaka)'
+                : lower.includes('uae')
+                ? '🇦🇪 UAE (Dubai, Abu Dhabi)'
+                : name;
+              return { code: name, name, label };
+            }
+            if (c && typeof c === 'object') {
+              const name = String(c.name || c.country || '').trim();
+              if (!name) return null;
+              const code = String(c.code || name);
+              const lower = name.toLowerCase();
+              const label = lower.includes('japan')
+                ? '🇯🇵 Japan (Tokyo, Kyoto, Osaka)'
+                : lower.includes('uae')
+                ? '🇦🇪 UAE (Dubai, Abu Dhabi)'
+                : name;
+              return { code, name, label };
+            }
+            return null;
+          })
+          .filter((item): item is { code: string; name: string; label: string } => item !== null)
+      : [];
 
-  const departureCities = meta?.departure_cities || ['BOM', 'DEL', 'BLR', 'MAA'];
+  const safeCountryList = countryList.length > 0
+    ? countryList
+    : [
+        { code: 'Japan', name: 'Japan', label: '🇯🇵 Japan (Tokyo, Kyoto, Osaka)' },
+        { code: 'UAE', name: 'UAE', label: '🇦🇪 UAE (Dubai, Abu Dhabi)' },
+      ];
+
+  // Available departure cities
+  const rawDepartureCities = meta?.departure_cities;
+  const departureCityList: { code: string; label: string }[] =
+    Array.isArray(rawDepartureCities) && rawDepartureCities.length > 0
+      ? rawDepartureCities
+          .map((c: any) => {
+            if (typeof c === 'string') {
+              const code = c.trim();
+              if (!code) return null;
+              const label =
+                code === 'BOM'
+                  ? 'Mumbai (BOM) — Chhatrapati Shivaji Maharaj Intl'
+                  : code === 'DEL'
+                  ? 'New Delhi (DEL) — Indira Gandhi Intl'
+                  : code === 'BLR'
+                  ? 'Bengaluru (BLR) — Kempegowda Intl'
+                  : code === 'MAA'
+                  ? 'Chennai (MAA) — Chennai Intl'
+                  : `${code} Intl Airport`;
+              return { code, label };
+            }
+            if (c && typeof c === 'object') {
+              const code = String(c.airport || c.code || c.city || '').trim();
+              if (!code) return null;
+              const cityName = String(c.city || c.name || code).trim();
+              const label = `${cityName} (${code}) — ${
+                code === 'BOM'
+                  ? 'Chhatrapati Shivaji Maharaj'
+                  : code === 'DEL'
+                  ? 'Indira Gandhi'
+                  : code === 'BLR'
+                  ? 'Kempegowda'
+                  : code === 'MAA'
+                  ? 'Chennai'
+                  : cityName
+              } Intl`;
+              return { code, label };
+            }
+            return null;
+          })
+          .filter((item): item is { code: string; label: string } => item !== null)
+      : [];
+
+  const safeDepartureCityList = departureCityList.length > 0
+    ? departureCityList
+    : [
+        { code: 'BOM', label: 'Mumbai (BOM) — Chhatrapati Shivaji Maharaj Intl' },
+        { code: 'DEL', label: 'New Delhi (DEL) — Indira Gandhi Intl' },
+        { code: 'BLR', label: 'Bengaluru (BLR) — Kempegowda Intl' },
+        { code: 'MAA', label: 'Chennai (MAA) — Chennai Intl' },
+      ];
 
   return (
     <div className="bg-surface-container-lowest rounded-xl shadow-md p-space-lg lg:p-space-xl relative overflow-hidden">
@@ -185,17 +272,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 onChange={(e) => setDepartureCity(e.target.value)}
                 className="w-full h-11 px-space-md bg-surface-container-low hover:bg-surface-container text-on-surface rounded-lg font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer appearance-none"
               >
-                {departureCities.map((city) => (
-                  <option key={city} value={city}>
-                    {city === 'BOM'
-                      ? 'Mumbai (BOM) — Chhatrapati Shivaji Maharaj Intl'
-                      : city === 'DEL'
-                      ? 'New Delhi (DEL) — Indira Gandhi Intl'
-                      : city === 'BLR'
-                      ? 'Bengaluru (BLR) — Kempegowda Intl'
-                      : city === 'MAA'
-                      ? 'Chennai (MAA) — Chennai Intl'
-                      : `${city} Intl Airport`}
+                {safeDepartureCityList.map((city) => (
+                  <option key={city.code} value={city.code}>
+                    {city.label}
                   </option>
                 ))}
               </select>
@@ -230,13 +309,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 onChange={(e) => setDestinationCountry(e.target.value)}
                 className="w-full h-11 pl-space-md pr-10 bg-surface-container-low hover:bg-surface-container text-on-surface rounded-lg font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer appearance-none"
               >
-                {countries.map((c) => (
-                  <option key={c} value={c}>
-                    {c.toLowerCase().includes('japan')
-                      ? '🇯🇵 Japan (Tokyo, Kyoto, Osaka)'
-                      : c.toLowerCase().includes('uae')
-                      ? '🇦🇪 UAE (Dubai, Abu Dhabi)'
-                      : c}
+                {safeCountryList.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -336,13 +411,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-md text-label-md shadow-sm whitespace-nowrap">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                  {destinationCountry.toLowerCase().includes('uae') ? 'Dubai' : 'Tokyo'} (
+                  {(destinationCountry || '').toLowerCase().includes('uae') ? 'Dubai' : 'Tokyo'} (
                   {Math.ceil(nights / 2)}N)
                 </span>
                 <span className="text-outline-variant font-label-sm">+</span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-md text-label-md shadow-sm whitespace-nowrap">
                   <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  {destinationCountry.toLowerCase().includes('uae') ? 'Abu Dhabi' : 'Kyoto'} (
+                  {(destinationCountry || '').toLowerCase().includes('uae') ? 'Abu Dhabi' : 'Kyoto'} (
                   {Math.floor(nights / 2)}N)
                 </span>
               </div>
