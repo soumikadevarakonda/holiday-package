@@ -161,7 +161,19 @@ export interface PackageResponse {
   cheapest_package?: PackageData;
   reason?: string;
   totals?: ApiTotals;
-  alternatives?: Record<string, PackageData>;
+  alternatives?: Partial<Record<AlternativeKey, AlternativeSummary>>;
+}
+
+export type AlternativeKey = 'cheapest' | 'fastest' | 'best_rated';
+
+/** G4: one of the three packages, already saved so it can be opened by package_id. */
+export interface AlternativeSummary {
+  package_id: string;
+  total_inr: number;
+  city_plan: { city: string; nights: number }[];
+  travel_minutes: number;
+  avg_stars: number;
+  within_budget: boolean;
 }
 
 export interface ComponentChangeRequest {
