@@ -246,5 +246,21 @@ The full split is in [Project.md](Project.md).
   - Shared `core/package_model.py`; engine stubs returning the Menon fixture (₹2,34,710).
   - `/api/health`, `/docs`, `/images`.
   - Docker and `start.sh`; 8 Phase 0 tests passing.
-- **Next: M-1.** A: timeutil, catalog loader (MySQL → memory), indexes, `GET /api/meta`, pricing. B: repositories and endpoints 4, 5, 12, 15 on the stubs.
-- No M/G/S feature implemented yet. All engine functions are stubs.
+- **M-1, Person A done:**
+  - `core/timeutil.py`, `core/money.py`.
+  - Catalog models, loader, indexes and store: MySQL → memory, with a JSON fallback used by tests. The DB and JSON loads were checked to be identical.
+  - `GET /api/meta`, pricing calculator and totals.
+  - 21 tests passing.
+- **M-2, Person A done:**
+  - `validate()`: every rule D1–P1, plus S2 hooks `seats_used` and `rooms_used`.
+  - Real `build()` / `rebuild()`: city rule, M8 suggestion, G3, G4 alternatives.
+  - Menon builds Tokyo 2 + Osaka 4 at ₹2,30,440. 65 tests passing.
+  - `/api/health` shows `catalog_source`.
+- **M-3 / M-4, Person A done:**
+  - `options()` offers only alternatives that keep the package valid, each with its true `price_diff`.
+  - `apply_change()` re-times or switches transfers, drops visits that no longer fit, adds warnings, and raises `ChangeError` for impossible requests.
+  - Quick-request parser and `POST /api/parse`.
+  - Fast vs brute oracle; `app/stubs.py` deleted.
+  - 103 tests passing.
+- **Person A's backend work is complete.** All 5 engine functions are real.
+- **Person B:** repositories and the 12 package / change / export / reservation endpoints (not started). They call real engine functions from day one.
