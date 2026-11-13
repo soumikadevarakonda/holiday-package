@@ -114,7 +114,6 @@ backend/
 │   │                          # startup: apply schema + seed catalog (+ load catalog into memory at M-1);
 │   │                          # serve data/images at /images (StaticFiles; also serves
 │   │                          # /images/ATTRIBUTIONS.md for the photo credits page)
-│   ├── stubs.py               # PHASE 0 ONLY: Menon fixture for the engine stubs; delete when all are real
 │   │
 │   ├── core/                  # shared plumbing, no business rules
 │   │   ├── config.py          # settings from env / .env: DB_URL, DATA_DIR, DATABASE_DIR, ports, CORS, DB_AUTO_INIT
@@ -132,7 +131,8 @@ backend/
 │   │   │                      # the only file that knows raw JSON field names; unwraps {amount, currency}
 │   │   ├── models.py          # dataclasses: Airport, Flight, Hotel, RoomType, Availability,
 │   │   │                      # Transfer, Attraction, Country, CityLink (hotel/attraction keep `image`)
-│   │   ├── loader.py          # read the MySQL catalog tables → models (once, at startup)
+│   │   ├── loader.py          # read the MySQL catalog tables → models (once, at startup);
+│   │   │                      # falls back to data/catalog JSON when MySQL is off or DB_AUTO_INIT=false (tests)
 │   │   ├── indexes.py         # dicts: flights by (airport, local date), rooms by hotel,
 │   │   │                      # availability by (room_id, date), transfers by (airport, city, area)
 │   │   │                      # and (from_city, to_city), attractions by city, airports by served city
@@ -146,7 +146,8 @@ backend/
 │   │
 │   ├── rules/                 # THE VALIDATOR: every section-4 rule as a check with an ID   (M3)
 │   │   ├── violations.py      # Violation(rule_id, item_ref, message)
-│   │   ├── validator.py       # validate(package) -> list[Violation]; runs all checks below
+│   │   ├── context.py         # parse a package once (flights, stays, transfers by kind, visits) for the checks
+│   │   ├── validator.py       # validate(pkg, *, initial, seats_used, rooms_used) -> list[Violation]
 │   │   └── checks/
 │   │       ├── dates.py       # D1–D3: nights, window, city plan
 │   │       ├── flights.py     # F1–F4: dates, serves_cities, seats
@@ -179,7 +180,8 @@ backend/
 │   │   ├── router.py          # GET .../options/{hotel|flight|attraction}, PATCH /api/packages/{id}
 │   │   ├── options.py         # valid alternatives + price_diff against the current choice (G2)
 │   │   ├── apply.py           # apply change on a copy → validate whole package → save or 409
-│   │   └── side_effects.py    # re-time transfers, drop attractions that no longer fit, warnings (G1)
+│   │   └── side_effects.py    # re-time transfers, drop attractions that no longer fit, warnings (G1);
+│   │                          # raises ChangeError (→ 422) for impossible requests
 │   │
 │   ├── export/                # shared trip format JSON                                   (M5, M7)
 │   │   ├── trip_format.py     # package → DATA_DICTIONARY section 4 (country, room_id, booking)
@@ -200,18 +202,21 @@ backend/
 │       └── router.py          # POST /api/parse
 │
 └── tests/
-    ├── conftest.py            # app client (DB_AUTO_INIT off), Menon fixture; real catalog added at M-1
-    ├── test_phase0.py         # Phase 0 exit checks: health, docs, images, error shape, stubs, ER mapping
+    ├── conftest.py            # catalog_store (session, JSON catalog), client (DB_AUTO_INIT off), menon fixture
+    ├── helpers.py             # menon_package(), to_request(), MENON_REQUEST (shared by tests)
+    ├── test_phase0.py         # Phase 0 exit checks: health, docs, images, error shape, engine interface, ER mapping
     ├── fixtures/
     │   ├── requests.json      # Menon, UAE, DEL/BOM/MAA, 1A+3C, 8 travelers, 22:50 KIX landing,
     │   │                      # 11:00 return, start 18 Apr (no package), tiny budget (M8)
-    │   └── menon_package.json # hand-written valid Menon package; backs the engine stubs
+    │   └── menon_package.json # hand-checked valid Menon package (Tokyo 3 + Kyoto 3), loaded by tests/helpers.py
     ├── unit/
     │   ├── test_timeutil.py   # 24:00, past-midnight windows, inclusive ends
     │   ├── test_pricing.py    # PER_VEHICLE rounding, child_price 0 vs missing
     │   ├── test_rules.py      # one test per rule ID, pass + fail case
     │   ├── test_city_plans.py # plan counts (Japan 10 nights = 135), link check
-    │   └── test_builder.py    # every fixture → validate() == [] or the expected outcome
+    │   ├── test_builder.py    # every fixture → validate() == [] or the expected outcome
+    │   ├── test_changes.py    # every option stays valid, price_diff = total diff, G1 effects, ChangeError
+    │   └── test_parser.py     # S1 sentences, aliases, amounts, warnings
     ├── oracle/
     │   └── test_fast_vs_brute.py   # strategy="fast" and "brute" give the same totals
     └── api/
@@ -239,7 +244,7 @@ repositories (packages, reservations, inventory) ──► core/database ──�
 ```
 
 - `catalog`, `pricing`, `rules` and `builder` never import a router, a repository or SQLAlchemy. The only exceptions are `catalog/seed.py` and `catalog/loader.py`, which run at startup and fill the in-memory store.
-- Only `catalog/seed.py` reads raw JSON field names, and only `catalog/loader.py` reads the catalog tables. Everything else uses the dataclasses.
+- Only `catalog/seed.py` and the JSON fallback in `catalog/loader.py` read raw JSON field names, and only `catalog/loader.py` reads the catalog tables. Everything else uses the dataclasses through `get_store()`.
 - Every path that returns or stores a package calls `rules.validator.validate()` first.
 
 ---
@@ -344,7 +349,7 @@ The frontend computes nothing: no prices, no rules, no city choice. It renders w
 
 | Person | Owns | Interface with the other person |
 |---|---|---|
-| Both (Phase 0, **done**) | `core/config.py`, `core/errors.py`, `core/database.py`, `core/migrate.py`, `core/package_model.py`, `catalog/seed.py`, `main.py`, `stubs.py`, `database/`, router skeletons, `tests/test_phase0.py` | — |
+| Both (Phase 0, **done**) | `core/config.py`, `core/errors.py`, `core/database.py`, `core/migrate.py`, `core/package_model.py`, `catalog/seed.py`, `main.py`, `stubs.py` (deleted after M-3), `database/`, router skeletons, `tests/test_phase0.py` | — |
 | A (engine) | `core/timeutil.py`, `core/money.py`, `catalog/` (models, loader, indexes, store, router), `pricing/`, `rules/`, `builder/`, `changes/options.py` + `side_effects.py`, `parser/`, `tests/unit`, `tests/oracle` | Pure functions: `build`, `rebuild`, `validate`, `options`, `apply_change` (see Project.md) |
 | B (API + UI + DB) | `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `frontend/`, `tests/api`; extends `core/database.py` and `database/` | API contract in `docs/PRD.md` section 10, frozen in Phase 0 |
 
