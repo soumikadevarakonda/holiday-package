@@ -5,6 +5,7 @@ __pycache__/
 
 # Environment variables & local configuration
 .env
+.env.example
 
 # Virtual environments
 .venv/
