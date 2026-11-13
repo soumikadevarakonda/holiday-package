@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ItemRow } from '../package/ItemRow';
+import { TravelTips } from '../package/TravelTips';
 import { Icon } from '../common/Icon';
 import { formatINR, formatDate, formatWeekdayDate } from '../../utils/format';
 import type { ReservationResponse, PackageItem } from '../../api/types';
@@ -136,7 +137,7 @@ export const ReservationSummary: React.FC<ReservationSummaryProps> = ({ reservat
         </section>
 
         {/* Price + traveler details */}
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+        <aside className="flex flex-col gap-4">
           <section className="bg-white rounded-lg shadow-card p-4">
             <h2 className="font-bold text-ink">Price paid</h2>
             {totals && (
@@ -165,6 +166,7 @@ export const ReservationSummary: React.FC<ReservationSummaryProps> = ({ reservat
             </p>
             {reservation.created_at && <p className="mt-4 text-xs text-ink-mute">Booked on {formatDate(reservation.created_at)}</p>}
           </section>
+          <TravelTips pkg={snap} items={items} />
         </aside>
       </div>
     </div>
