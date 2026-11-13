@@ -49,7 +49,11 @@ def init_database(app: FastAPI) -> None:
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO)
     init_database(app)
-    # M-1 (Person A): load the catalog from MySQL into get_store() here.
+    # M-1 (Person A): load the catalog into get_store()
+    try:
+        get_store().load()
+    except Exception:
+        log.exception("Failed to load catalog into store during startup.")
     yield
 
 
@@ -84,6 +88,7 @@ def create_app() -> FastAPI:
             "db": db_ok,
             "catalog_seeded": seeded,
             "catalog_loaded": get_store().loaded,
+            "catalog_source": get_store().source,     # "mysql" in normal runs; "json" = MySQL fallback
             "db_init_error": getattr(app.state, "db_init_error", None),
         }
 
