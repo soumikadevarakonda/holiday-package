@@ -1,52 +1,34 @@
 import React, { useState } from 'react';
+import { Icon } from './Icon';
+
+type Kind = 'hotel' | 'attraction' | 'city' | 'flight' | 'transfer';
 
 interface PhotoProps {
   src?: string | null;
   alt: string;
   className?: string;
-  fallbackType?: 'hotel' | 'attraction' | 'city';
+  fallbackType?: Kind;
 }
 
-export const Photo: React.FC<PhotoProps> = ({
-  src,
-  alt,
-  className = '',
-  fallbackType = 'hotel',
-}) => {
-  const [hasError, setHasError] = useState(false);
+const FALLBACK_ICON: Record<Kind, string> = {
+  hotel: 'hotel',
+  attraction: 'attractions',
+  city: 'location_city',
+  flight: 'flight',
+  transfer: 'directions_bus',
+};
 
-  // Normalize src
-  let finalSrc = src;
-  if (finalSrc && !finalSrc.startsWith('http') && !finalSrc.startsWith('/')) {
-    finalSrc = `/${finalSrc}`;
-  }
+/** Catalog photo served by the backend at /images/...; shows an icon tile when there is none. */
+export const Photo: React.FC<PhotoProps> = ({ src, alt, className = '', fallbackType = 'hotel' }) => {
+  const [hasError, setHasError] = useState(false);
+  const finalSrc = src && !src.startsWith('http') && !src.startsWith('/') ? `/${src}` : src;
 
   if (!finalSrc || hasError) {
-    const icon =
-      fallbackType === 'hotel'
-        ? 'apartment'
-        : fallbackType === 'attraction'
-        ? 'local_activity'
-        : 'landscape';
-
     return (
-      <div
-        className={`bg-surface-container-high flex flex-col items-center justify-center text-outline-variant ${className}`}
-        aria-label={alt}
-      >
-        <span className="material-symbols-outlined text-[32px]">{icon}</span>
-        <span className="font-label-sm text-label-sm mt-1 text-center px-2 line-clamp-1">{alt}</span>
+      <div className={`bg-navy-light text-navy flex items-center justify-center ${className}`} role="img" aria-label={alt}>
+        <Icon name={FALLBACK_ICON[fallbackType]} className="!text-3xl" />
       </div>
     );
   }
-
-  return (
-    <img
-      src={finalSrc}
-      alt={alt}
-      className={className}
-      onError={() => setHasError(true)}
-      loading="lazy"
-    />
-  );
+  return <img src={finalSrc} alt={alt} className={className} onError={() => setHasError(true)} loading="lazy" />;
 };
