@@ -9,6 +9,8 @@ interface CityPlanHeaderProps {
   onExportJson: () => void;
   onUndo?: () => void;
   undoing?: boolean;
+  /** Text for the link back to the search results this trip was picked from (hidden when not given). */
+  backLabel?: string;
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -18,7 +20,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 /** Trip summary: search recap strip, then the trip title with status and actions. */
-export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({ packageRes, onExportJson, onUndo, undoing }) => {
+export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({ packageRes, onExportJson, onUndo, undoing, backLabel }) => {
   const pkg: PackageData = packageRes.package_data || packageRes.package || ({ trip_id: '', items: [] } as PackageData);
   const plan = (pkg.cities || []).map((c) => ({ city: c, nights: pkg.nights_per_city?.[c] }));
   const t = pkg.travelers || { adults: 0, children: 0, child_ages: [] };
@@ -38,6 +40,15 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({ packageRes, onEx
       {/* Search recap */}
       <div className="bg-navy-light">
         <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-navy">
+          {backLabel && (
+            <Link
+              to="/?view=results"
+              className="flex items-center gap-1 font-semibold text-brand hover:underline pr-4 sm:border-r border-navy/20"
+            >
+              <Icon name="arrow_back" className="!text-base" />
+              {backLabel}
+            </Link>
+          )}
           <span className="flex items-center gap-1.5 font-semibold">
             <Icon name="flight_takeoff" className="!text-base" />
             {pkg.departure_city} → {pkg.country}
