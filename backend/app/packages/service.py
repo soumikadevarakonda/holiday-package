@@ -15,6 +15,7 @@ from app.core.engine_adapter import get_engine_adapter
 from app.core.errors import ConflictError, NotFoundError
 from app.packages.repository import PackageRepository
 from app.packages.schemas import TripRequestSchema
+from app.packages.item_details import add_day_cities, with_details
 from app.packages.timeline import generate_package_timeline
 
 ITEM_TYPES = ("flight", "hotel", "transfer", "attraction")
@@ -45,6 +46,8 @@ class PackageService:
 
     def _package_view(self, pkg_id: str, pkg_data: dict[str, Any], status: str, version: int) -> dict[str, Any]:
         start, end = date.fromisoformat(pkg_data["start_date"]), date.fromisoformat(pkg_data["end_date"])
+        items = pkg_data.get("items", [])
+        home = (pkg_data.get("traveler") or {}).get("home_airport")
         return {
             "package_id": pkg_id,
             "status": status,
@@ -52,9 +55,9 @@ class PackageService:
             "version_no": version,
             "total_inr": int(pkg_data.get("total_inr", 0)),
             "totals": compute_totals(pkg_data),
-            "items": pkg_data.get("items", []),
+            "items": with_details(items, home),
             "package": pkg_data,
-            "timeline": generate_package_timeline(pkg_data, start, (end - start).days),
+            "timeline": add_day_cities(generate_package_timeline(pkg_data, start, (end - start).days), items),
         }
 
     def create_package(self, request_data: TripRequestSchema) -> dict[str, Any]:
