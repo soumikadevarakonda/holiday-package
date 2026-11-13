@@ -1,61 +1,43 @@
 import React from 'react';
+import { Icon } from '../common/Icon';
 
 interface NoPackagePanelProps {
   reason?: string;
   onModifyRequest: () => void;
 }
 
-export const NoPackagePanel: React.FC<NoPackagePanelProps> = ({
-  reason = 'No flight or accommodation schedules could satisfy your required corridor, passenger sizing, and minimum night distribution rules.',
-  onModifyRequest,
-}) => {
-  return (
-    <div className="bg-surface-container-lowest rounded-xl shadow-md p-space-lg lg:p-space-xl border border-error/20 flex flex-col gap-space-md">
-      <div className="flex items-start gap-space-md">
-        <div className="w-12 h-12 rounded-xl bg-error-container text-error flex items-center justify-center shrink-0">
-          <span className="material-symbols-outlined text-[26px]">fmd_bad</span>
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-error/10 text-error font-label-sm text-label-sm uppercase font-semibold">
-              Feasibility Conflict
-            </span>
-            <span className="font-label-sm text-label-sm text-on-surface-variant">
-              Engine Code: NO_FEASIBLE_PACKAGE
-            </span>
-          </div>
-          <h3 className="font-headline-lg text-headline-lg text-on-surface mt-1">
-            Unable to Compile Package with Current Constraints
-          </h3>
-          <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-            {reason}
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-surface-container-low p-space-md rounded-xl flex items-start gap-space-sm">
-        <span className="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">
-          lightbulb
-        </span>
-        <div className="font-body-sm text-body-sm text-on-surface-variant">
-          <strong className="text-on-surface block font-medium">Suggested Adjustments:</strong>
-          <ul className="list-disc list-inside mt-1 space-y-0.5">
-            <li>Ensure departure date is within 1–20 Apr 2027 and total nights do not exceed 20 Apr.</li>
-            <li>Try departing from alternate hubs (Mumbai BOM, Delhi DEL, Bengaluru BLR, Chennai MAA).</li>
-            <li>Adjust duration to 4–8 nights for optimal flight connection schedules.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="flex justify-end pt-space-xs">
+/** Shown when no trip can be built at all for this search. */
+export const NoPackagePanel: React.FC<NoPackagePanelProps> = ({ reason, onModifyRequest }) => (
+  <section className="bg-white rounded-lg shadow-card border-l-4 border-bad p-5 sm:p-6" aria-live="polite">
+    <div className="flex items-start gap-3">
+      <span className="w-10 h-10 rounded-full bg-bad-light text-bad flex items-center justify-center shrink-0">
+        <Icon name="event_busy" />
+      </span>
+      <div className="flex-1">
+        <h2 className="text-lg font-bold text-ink">No trip available for this search</h2>
+        <p className="text-sm text-ink-soft mt-1">
+          {reason || 'No combination of flights and hotels works for these dates and travelers.'}
+        </p>
+        <p className="text-sm font-semibold text-ink mt-4">Things to try</p>
+        <ul className="mt-1 text-sm text-ink-soft space-y-1">
+          <li className="flex gap-2">
+            <Icon name="check" className="!text-base text-ok" /> A different start date
+          </li>
+          <li className="flex gap-2">
+            <Icon name="check" className="!text-base text-ok" /> Another departure city
+          </li>
+          <li className="flex gap-2">
+            <Icon name="check" className="!text-base text-ok" /> Fewer travelers in one booking
+          </li>
+        </ul>
         <button
           type="button"
           onClick={onModifyRequest}
-          className="px-space-lg py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-sm text-headline-sm transition-all shadow-sm"
+          className="mt-4 h-10 px-4 rounded-md bg-brand hover:bg-brand-dark text-white font-semibold"
         >
-          Reconfigure Travel Parameters
+          Change search
         </button>
       </div>
     </div>
-  );
-};
+  </section>
+);
