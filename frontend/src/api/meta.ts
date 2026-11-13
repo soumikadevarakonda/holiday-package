@@ -1,6 +1,7 @@
 import { apiClient } from './client';
+import { normalizeMeta } from './normalize';
 import type { MetaResponse } from './types';
 
 export async function getMeta(): Promise<MetaResponse> {
-  return apiClient<MetaResponse>('/api/meta');
+  return normalizeMeta(await apiClient<any>('/api/meta'));
 }
