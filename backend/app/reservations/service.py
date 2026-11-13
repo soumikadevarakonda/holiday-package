@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.engine_adapter import get_engine_adapter
 from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.inventory.service import InventoryService
+from app.packages.item_details import with_details
 from app.packages.repository import PackageRepository
 from app.packages.schemas import ConfirmPackageRequest
 from app.reservations.repository import ReservationRepository
@@ -157,7 +158,7 @@ class ReservationService:
             "customer_email": cust.get("email", "traveler@example.com"),
             "total_price": float(reservation.total_price),
             "created_at": reservation.created_at.isoformat() if reservation.created_at else None,
-            "items": snap.get("items", []),
+            "items": with_details(snap.get("items", []), (snap.get("traveler") or {}).get("home_airport")),
             "total_inr": int(reservation.total_price),
             "snapshot": snap,
         }
