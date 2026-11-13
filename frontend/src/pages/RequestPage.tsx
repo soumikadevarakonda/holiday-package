@@ -45,15 +45,16 @@ export const RequestPage: React.FC = () => {
       setInitialFormValues({
         destination_country: 'Japan',
         departure_city: 'BLR',
-        start_date: '2027-04-07',
+        start_date: '2027-04-10',
         nights: 6,
         adults: 2,
         children: 1,
-        child_ages: [9],
-        budget: 365000,
+        child_ages: [6],
+        budget: 350000,
       });
     }
     setOutcome(null);
+    setError(null);
   };
 
   const handleParsed = (parsed: Partial<TripRequest>) => {
