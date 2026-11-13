@@ -118,6 +118,53 @@ CREATE TABLE IF NOT EXISTS reservations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------------------------
+-- Table: packages
+-- Application-managed holiday packages with current version pointer.
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS packages (
+    package_id VARCHAR(64) NOT NULL,
+    trip_id VARCHAR(64) NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'PLANNED',
+    current_version_no INT NOT NULL DEFAULT 1,
+    total_price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    city_plans JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (package_id),
+    CONSTRAINT fk_packages_trip
+        FOREIGN KEY (trip_id) REFERENCES trips (trip_id)
+        ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT chk_packages_status CHECK (status IN ('DRAFT', 'PLANNED', 'BOOKED', 'CANCELLED', 'OVER_BUDGET', 'NO_PACKAGE')),
+    CONSTRAINT chk_packages_version_no CHECK (current_version_no >= 1),
+    CONSTRAINT chk_packages_total_price CHECK (total_price >= 0.00),
+    INDEX idx_packages_trip_id (trip_id),
+    INDEX idx_packages_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------------------------
+-- Table: package_versions
+-- Immutable package snapshots for version tracking and undo support.
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS package_versions (
+    version_id VARCHAR(64) NOT NULL,
+    package_id VARCHAR(64) NOT NULL,
+    version_no INT NOT NULL,
+    snapshot JSON NOT NULL,
+    change_summary VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (version_id),
+    CONSTRAINT fk_package_versions_package
+        FOREIGN KEY (package_id) REFERENCES packages (package_id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT uq_package_version_no
+        UNIQUE (package_id, version_no),
+    CONSTRAINT chk_package_version_num CHECK (version_no >= 1),
+    INDEX idx_package_versions_pkg_id (package_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------------------------
 -- Table: reservation_items
 -- Frozen immutable snapshots of booked items at the exact moment of reservation.
 -- ------------------------------------------------------------------------------
@@ -138,4 +185,27 @@ CREATE TABLE IF NOT EXISTS reservation_items (
     CONSTRAINT chk_res_items_quantity CHECK (quantity >= 1),
     INDEX idx_res_items_reservation_id (reservation_id),
     INDEX idx_res_items_catalogue_id (catalogue_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------------------------
+-- Table: inventory_usage
+-- Tracks allocated inventory seats and rooms for confirmed bookings (S2).
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS inventory_usage (
+    usage_id VARCHAR(64) NOT NULL,
+    reservation_id VARCHAR(64) NOT NULL,
+    item_type VARCHAR(32) NOT NULL,
+    catalogue_id VARCHAR(64) NOT NULL,
+    allocated_date DATE NOT NULL,
+    quantity INT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (usage_id),
+    CONSTRAINT fk_inventory_usage_reservation
+        FOREIGN KEY (reservation_id) REFERENCES reservations (reservation_id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT chk_inv_usage_type CHECK (item_type IN ('flight', 'room')),
+    CONSTRAINT chk_inv_usage_quantity CHECK (quantity >= 1),
+    INDEX idx_inv_usage_res_id (reservation_id),
+    INDEX idx_inv_usage_item_date (item_type, catalogue_id, allocated_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

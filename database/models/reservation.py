@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import (
     CheckConstraint,
@@ -40,10 +40,15 @@ class Reservation(Base):
         primary_key=True,
         default=lambda: f"res-{uuid.uuid4().hex[:12]}",
     )
-    trip_id: Mapped[str] = mapped_column(
+    trip_id: Mapped[Optional[str]] = mapped_column(
         String(64),
         ForeignKey("trips.trip_id", ondelete="RESTRICT", onupdate="CASCADE"),
-        nullable=False,
+        nullable=True,
+    )
+    package_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        ForeignKey("packages.package_id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=True,
     )
     reference: Mapped[str] = mapped_column(
         String(10),
@@ -56,6 +61,10 @@ class Reservation(Base):
         default="CONFIRMED",
     )
     total_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    package_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
@@ -84,9 +93,11 @@ class Reservation(Base):
         return {
             "reservation_id": self.reservation_id,
             "trip_id": self.trip_id,
+            "package_id": self.package_id,
             "reference": self.reference,
             "status": self.status,
             "total_price": float(self.total_price),
+            "package_snapshot": self.package_snapshot or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "items": [item.to_dict() for item in self.items],
         }

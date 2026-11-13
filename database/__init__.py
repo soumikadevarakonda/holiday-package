@@ -34,6 +34,9 @@ from database.catalog_validator import (
 )
 from database.models import (
     Base,
+    InventoryUsage,
+    Package,
+    PackageVersion,
     Reservation,
     ReservationItem,
     Trip,
@@ -72,8 +75,11 @@ __all__ = [
     "Trip",
     "TripCity",
     "TripItem",
+    "Package",
+    "PackageVersion",
     "Reservation",
     "ReservationItem",
+    "InventoryUsage",
     # Repositories
     "TripRepository",
     "ReservationRepository",

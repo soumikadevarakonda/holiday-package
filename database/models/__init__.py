@@ -13,13 +13,18 @@ class Base(DeclarativeBase):
 from database.models.trip import Trip
 from database.models.trip_city import TripCity
 from database.models.trip_item import TripItem
+from database.models.package import Package, PackageVersion
 from database.models.reservation import Reservation, ReservationItem
+from database.models.inventory import InventoryUsage
 
 __all__ = [
     "Base",
     "Trip",
     "TripCity",
     "TripItem",
+    "Package",
+    "PackageVersion",
     "Reservation",
     "ReservationItem",
+    "InventoryUsage",
 ]
