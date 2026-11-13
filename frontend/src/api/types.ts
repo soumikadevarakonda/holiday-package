@@ -8,6 +8,7 @@ export interface TripRequest {
   child_ages: number[];
   budget: number;
   mode?: string;
+  traveler_name?: string;
 }
 
 export interface Totals {
@@ -55,6 +56,26 @@ export interface PackageItem {
   attraction_id?: string;
   attraction_name?: string;
   time_slot?: string;
+  // From the backend's catalog details
+  leg?: 'arrival' | 'return';
+  status?: string;
+  booking?: { reference: string } | null;
+  rating?: number;
+  stars?: number;
+  area?: string;
+  intercity?: boolean;
+  category?: string;
+  duration_minutes?: number;
+  stops?: number;
+}
+
+/** Totals exactly as the backend sends them (M5). */
+export interface ApiTotals {
+  total_inr: number;
+  budget_inr: number;
+  left_inr: number;
+  over_budget: boolean;
+  by_type: Record<string, number>;
 }
 
 export interface TimelineEvent {
@@ -71,6 +92,7 @@ export interface TimelineEvent {
 
 export interface TimelineDay {
   day_number: number;
+  city?: string | null;
   date: string;
   weekday: string;
   events: TimelineEvent[];
@@ -79,6 +101,11 @@ export interface TimelineDay {
 export interface CityPlan {
   cities: string[];
   nights: Record<string, number>;
+  plan: { city: string; nights: number }[];
+  label?: string;
+  total_inr?: number | null;
+  valid?: boolean;
+  reason?: string | null;
   order?: string[];
   total_nights?: number;
 }
@@ -92,6 +119,8 @@ export interface PackageData {
   destination_country?: string;
   cities?: string[];
   nights_per_city?: Record<string, number>;
+  traveler_name?: string;
+  budget_inr?: number;
   travelers?: {
     adults: number;
     children: number;
@@ -131,6 +160,8 @@ export interface PackageResponse {
   suggestion?: string;
   cheapest_package?: PackageData;
   reason?: string;
+  totals?: ApiTotals;
+  alternatives?: Record<string, PackageData>;
 }
 
 export interface ComponentChangeRequest {
@@ -158,6 +189,9 @@ export interface ChangeOption {
   duration?: string;
   category?: string;
   time_slot?: string;
+  start?: string | null;
+  current?: boolean;
+  key: string;
 }
 
 export interface ChangeResponse {
@@ -188,9 +222,11 @@ export interface ReservationResponse {
   customer_name: string;
   customer_email: string;
   total_price: number;
+  total_inr?: number;
   created_at?: string;
   items: PackageItem[];
   snapshot: PackageData;
+  already_confirmed?: boolean;
 }
 
 export interface CountryMeta {
@@ -221,4 +257,6 @@ export interface QuickRequestResponse {
   missing_fields: string[];
   ambiguous_fields: string[];
   ready_to_build: boolean;
+  unparsed: string[];
+  warnings: string[];
 }
