@@ -80,7 +80,7 @@ flowchart TB
   CDB -->|load once| CAT
   subgraph DB["MySQL 8"]
     CDB[("Catalog tables (ER diagram)<br/>country · city · airport · flight · hotel · room<br/>availability · transfer + subtypes · attraction")]
-    ADB[("App state<br/>trip_requests · packages · package_versions<br/>reservations · inventory_usage")]
+    ADB[("App state (ORM)<br/>trips · packages · package_versions<br/>reservations · reservation_items · inventory_usage")]
   end
   BE -->|SQLAlchemy| ADB
 ```
@@ -95,7 +95,7 @@ flowchart TB
 ```
 ├── data/        # provided data pack (brief, dictionary, catalog, images), untouched
 ├── docs/        # PRD and project structure
-├── database/    # ER diagram, MySQL init, schema (001–005 catalog, 006–010 app state), seeds, scripts
+├── database/    # ER diagram, MySQL init, schema (001–005 catalog, 006–011 app state), seeds, scripts
 ├── backend/     # FastAPI app: core, catalog, pricing, rules, builder,
 │                # packages, changes, export, reservations, inventory, parser
 └── frontend/    # React app: api client, pages, components, hooks

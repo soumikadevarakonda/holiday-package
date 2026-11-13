@@ -69,5 +69,5 @@ def test_catalog_maps_onto_er_tables():
 
 def test_schema_files_are_ordered():
     names = sorted(p.name for p in get_settings().schema_dir.glob("*.sql"))
-    assert names[0].startswith("001_catalog") and names[-1] == "010_inventory_usage.sql"
+    assert names[0].startswith("001_catalog") and names[-1] == "011_inventory_usage.sql"
     assert Path(get_settings().DATABASE_DIR / "init" / "000_create_database.sql").is_file()

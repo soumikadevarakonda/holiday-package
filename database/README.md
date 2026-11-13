@@ -5,7 +5,7 @@ MySQL 8, database `holiday`. Two groups of tables:
 | Group | Tables | Filled by |
 |---|---|---|
 | **Catalog** (ER diagram: [travel_platform_er_diagram.md](travel_platform_er_diagram.md)) | `country`, `destination_city`, `airport`, `city_airport`, `departure_city`, `flight`, `hotel`, `room`, `room_availability`, `transfer`, `airport_transfer`, `city_transfer`, `intercity_transfer`, `intercity_link`, `link_transfer`, `attraction`, `catalog_meta` | `python -m app.catalog.seed`, from `data/catalog/*.json` (read-only source) |
-| **App state** | `trip_requests`, `packages`, `package_versions`, `reservations`, `inventory_usage` | The API |
+| **App state** | `trips`, `packages`, `package_versions`, `reservations`, `reservation_items`, `inventory_usage` | The API, through the SQLAlchemy ORM models in `backend/app/models/` |
 
 ## Files
 
@@ -13,7 +13,7 @@ MySQL 8, database `holiday`. Two groups of tables:
 |---|---|
 | `init/000_create_database.sql` | Creates the `holiday` database and the dev user `holiday` / `holiday`. Run once as root. Docker runs it on first start. |
 | `schema/001–005_catalog_*.sql` | Catalog tables from the ER diagram |
-| `schema/006–010_*.sql` | App-state tables |
+| `schema/006–011_*.sql` | App-state tables; they mirror `backend/app/models/*.py` column for column (tests create the same tables from the models on SQLite) |
 | `seeds/demo_reset.sql` | Clears app state before a demo (keeps the catalog) |
 | `scripts/apply_schema.sh` | Applies the schema and seeds the catalog by hand |
 | `scripts/reset_db.sh` | Drops and rebuilds everything (dev only) |
@@ -31,7 +31,7 @@ The ER diagram shows key columns only. The schema keeps every table, key and rel
 - **No FK from `attraction.city`**: two attractions are in Nara, which is not a destination city. They stay in the table and are never offered.
 - **No FK from `airport.country`**: Indian departure airports have no `country` row.
 - `catalog_meta` (not in the diagram) stores the `rules` block from `destinations.json` and the source hash.
-- The five app-state tables are not in the diagram.
+- The six app-state tables are not in the diagram.
 
 ## Reset
 
@@ -39,3 +39,7 @@ The ER diagram shows key columns only. The schema keeps every table, key and rel
 mysql -u holiday -pholiday holiday < database/seeds/demo_reset.sql   # clear packages + reservations
 bash database/scripts/reset_db.sh                                    # rebuild everything (asks for root password)
 ```
+
+## Changing an app-state table
+
+The ORM models in `backend/app/models/` and `schema/006–011_*.sql` must stay identical. To change a table, edit the model **and** add a new numbered SQL file (e.g. `012_add_x.sql` with `ALTER TABLE`). Never edit a file that has already been applied: `CREATE TABLE IF NOT EXISTS` won't change an existing table.

@@ -6,5 +6,6 @@ TRUNCATE TABLE inventory_usage;
 TRUNCATE TABLE reservations;
 TRUNCATE TABLE package_versions;
 TRUNCATE TABLE packages;
-TRUNCATE TABLE trip_requests;
+TRUNCATE TABLE reservation_items;
+TRUNCATE TABLE trips;
 SET FOREIGN_KEY_CHECKS = 1;

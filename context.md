@@ -177,7 +177,7 @@ All routes are under `/api`. Errors use one shape: `{code, message, details}`. O
 
 ## 7. Database
 
-Schema files: `database/schema/` (`001–005` catalog, `006–010` app state), applied on backend startup. Details and the differences from the ER diagram are in [database/README.md](database/README.md).
+Schema files: `database/schema/` (`001–005` catalog, `006–011` app state), applied on backend startup. Details and the differences from the ER diagram are in [database/README.md](database/README.md).
 
 **Catalog tables** (ER diagram [database/travel_platform_er_diagram.md](database/travel_platform_er_diagram.md), seeded from JSON by `catalog/seed.py`):
 
@@ -197,10 +197,11 @@ Schema files: `database/schema/` (`001–005` catalog, `006–010` app state), a
 
 | Table | Purpose |
 |---|---|
-| `trip_requests` | Validated request as entered |
+| `trips` | Validated request as entered (ORM: `backend/app/models/`) |
 | `packages` | One row per package: status (`DRAFT`/`BOOKED`), current version, total |
 | `package_versions` | Every accepted change is a new version (JSON body); `UNIQUE(package_id, version_no)` |
-| `reservations` | Frozen snapshot at confirm; `reference CHAR(10)` primary key |
+| `reservations` | Frozen BOOKED snapshot at confirm; unique 10-digit `reference` |
+| `reservation_items` | One row per booked item |
 | `inventory_usage` | S2: seats and rooms consumed by bookings |
 
 **Reservation number:** `secrets.randbelow(9 * 10**9) + 10**9` (10 digits, no leading zero), stored as a string, retry up to 5 times on a duplicate key.
@@ -263,4 +264,10 @@ The full split is in [Project.md](Project.md).
   - Fast vs brute oracle; `app/stubs.py` deleted.
   - 103 tests passing.
 - **Person A's backend work is complete.** All 5 engine functions are real.
-- **Person B:** repositories and the 12 package / change / export / reservation endpoints (not started). They call real engine functions from day one.
+- **Merged `api-integration` (Soumika, Person B) into `Khushi`:**
+  - All 15 API endpoints work on the real engine.
+  - App state in MySQL: `trips`, `packages`, `package_versions`, `reservations`, `reservation_items`, `inventory_usage` (ORM in `backend/app/models/`).
+  - `core/engine_adapter.py` converts between the API's dicts and the engine's dataclasses.
+  - 147 tests passing.
+  - The full flow is verified on MySQL: build → change → confirm → lookup after restart → export BOOKED.
+- **Backend complete.** Next: the frontend (all files are still empty), then the README's "features done" checklist.

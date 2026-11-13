@@ -71,11 +71,12 @@ database/
 │   ├── 003_catalog_hotels.sql         # hotel, room, room_availability
 │   ├── 004_catalog_transfers.sql      # transfer + airport_/city_/intercity_transfer subtypes, intercity_link, link_transfer
 │   ├── 005_catalog_attractions.sql    # attraction
-│   ├── 006_trip_requests.sql
+│   ├── 006_trips.sql                  # app state below mirrors backend/app/models/*.py column for column
 │   ├── 007_packages.sql
 │   ├── 008_package_versions.sql       # UNIQUE(package_id, version_no)
-│   ├── 009_reservations.sql           # reference CHAR(10) PRIMARY KEY, package_id UNIQUE
-│   └── 010_inventory_usage.sql        # S2: seats/rooms consumed by confirmed bookings
+│   ├── 009_reservations.sql           # reference VARCHAR(10) UNIQUE, frozen package_snapshot
+│   ├── 010_reservation_items.sql      # one row per booked item
+│   └── 011_inventory_usage.sql        # S2: seats/rooms consumed by confirmed bookings
 ├── seeds/
 │   └── demo_reset.sql                 # dev only: TRUNCATE app-state tables before the demo (keeps catalog)
 └── scripts/
@@ -92,10 +93,11 @@ database/
 | `intercity_link`, `link_transfer` | Connected city pairs and their allowed transfers (CT1) | `catalog/seed.py` |
 | `attraction` | Attractions (hours, days, closed dates, prices) | `catalog/seed.py` |
 | `catalog_meta` | `rules` block from destinations.json + source hash | `catalog/seed.py` |
-| `trip_requests` | Validated request as entered | `packages` |
-| `packages` | One row per built package (status, current version, total) | `packages` |
-| `package_versions` | Every accepted change = new version (JSON body in trip format) | `packages`, `changes` |
-| `reservations` | Frozen snapshot at confirm, 10-digit reference | `reservations` |
+| `trips` | Validated request as entered | `packages` |
+| `packages` | One row per built package (status, current version, total, ranked city plans) | `packages` |
+| `package_versions` | Every accepted change = new version (JSON snapshot in trip format) | `packages`, `changes` |
+| `reservations` | Frozen BOOKED snapshot at confirm, 10-digit reference | `reservations` |
+| `reservation_items` | One row per booked item | `reservations` |
 | `inventory_usage` | S2: seats and rooms used per flight / room-night | `inventory` |
 
 **How tables get created:** on startup (`DB_AUTO_INIT=true`) the backend runs `database/schema/*.sql` (`core/migrate.py`) and seeds the catalog tables (`catalog/seed.py`). The seed is skipped when the JSON files' hash is unchanged. In Docker, only `database/init` is mounted into `/docker-entrypoint-initdb.d/`, which creates the database and user. Where the schema differs from the ER diagram is listed in [database/README.md](database/README.md).
@@ -111,20 +113,30 @@ backend/
 ├── pytest.ini
 ├── app/                       # every folder has an __init__.py
 │   ├── main.py                # create FastAPI app, CORS, error handlers, mount routers, GET /api/health;
-│   │                          # startup: apply schema + seed catalog (+ load catalog into memory at M-1);
+│   │                          # startup: apply schema + seed catalog + load catalog into memory;
 │   │                          # serve data/images at /images (StaticFiles; also serves
 │   │                          # /images/ATTRIBUTIONS.md for the photo credits page)
 │   │
 │   ├── core/                  # shared plumbing, no business rules
 │   │   ├── config.py          # settings from env / .env: DB_URL, DATA_DIR, DATABASE_DIR, ports, CORS, DB_AUTO_INIT
-│   │   ├── database.py        # SQLAlchemy Core engine, get_db() per-request transaction, db_ping()
+│   │   ├── database.py        # engine, ORM session factory, get_db() (one session per request: commit /
+│   │   │                      # rollback), db_ping()
+│   │   ├── engine_adapter.py  # THE bridge API ↔ engine: form → TripRequest, snapshot dict ↔ Package,
+│   │   │                      # PATCH body → Change, dataclasses → dicts, ChangeError → 422
 │   │   ├── migrate.py         # apply database/schema/*.sql in order (python -m app.core.migrate)
-│   │   ├── errors.py          # AppError(code, message, details) + exception handlers → {code, message, details}
+│   │   ├── errors.py          # AppError + NotFound / Conflict / Validation / BadRequest / EngineUnavailable;
+│   │   │                      # handlers → {code, message, details}; 422 = INVALID_INPUT + field_errors
 │   │   ├── package_model.py   # shared dataclasses: TripRequest, Package, Item, CityStay, Totals
 │   │   │                      # (the contract between engine and API, see Project.md)
 │   │   ├── timeutil.py        # parse "HH:MM" and "24:00", windows past midnight, inclusive ends,
 │   │   │                      # weekday of a date, minutes math (single tested helper)
 │   │   └── money.py           # integer INR helpers, formatting
+│   │
+│   ├── models/                # SQLAlchemy ORM models for the app-state tables (Person B)
+│   │   ├── trip.py            # Trip  → trips
+│   │   ├── package.py         # Package, PackageVersion → packages, package_versions
+│   │   ├── reservation.py     # Reservation, ReservationItem → reservations, reservation_items
+│   │   └── inventory.py       # InventoryUsage → inventory_usage
 │   │
 │   ├── catalog/               # READ-ONLY catalog: seed MySQL, load once, build indexes  (M1, all)
 │   │   ├── seed.py            # data/catalog/*.json → MySQL catalog tables (python -m app.catalog.seed);
@@ -171,15 +183,18 @@ backend/
 │   ├── packages/              # API + persistence for packages                           (M2, M4, M5)
 │   │   ├── router.py          # POST /api/packages, GET /api/packages/{id}, GET .../city-plans,
 │   │   │                      # POST .../rebuild, POST .../undo
-│   │   ├── schemas.py         # Pydantic: TripRequest (M1 field checks), PackageOut, Totals, Outcome
-│   │   ├── service.py         # validate request → builder → save version → response
-│   │   ├── repository.py      # trip_requests, packages, package_versions tables
+│   │   ├── schemas.py         # Pydantic: TripRequestSchema (M1 checks, accepts PRD + form field names),
+│   │   │                      # ComponentChangeRequest, RebuildRequest, ConfirmPackageRequest
+│   │   ├── service.py         # save request → adapter.build() → save version 1 → response with totals,
+│   │   │                      # timeline, city plans, G4 alternatives; rebuild, undo
+│   │   ├── repository.py      # trips, packages, package_versions (ORM)
 │   │   └── timeline.py        # day-by-day plan in time order (M4)
 │   │
 │   ├── changes/               # change hotel / flight / attractions                       (M6, G1, G2)
 │   │   ├── router.py          # GET .../options/{hotel|flight|attraction}, PATCH /api/packages/{id}
 │   │   ├── options.py         # valid alternatives + price_diff against the current choice (G2)
-│   │   ├── apply.py           # apply change on a copy → validate whole package → save or 409
+│   │   ├── apply.py           # ChangesService: options + PATCH → adapter.apply_change → validate → new
+│   │   │                      # version, or 409 RULE_VIOLATION / VERSION_CONFLICT / ALREADY_BOOKED
 │   │   └── side_effects.py    # re-time transfers, drop attractions that no longer fit, warnings (G1);
 │   │                          # raises ChangeError (→ 422) for impossible requests
 │   │
@@ -190,7 +205,8 @@ backend/
 │   ├── reservations/          # confirm + lookup                                          (M7)
 │   │   ├── router.py          # POST /api/packages/{id}/confirm, GET /api/reservations/{ref}
 │   │   ├── reference.py       # random 10-digit number, retry on duplicate key
-│   │   ├── service.py         # confirm transaction: re-validate → (S2 inventory) → snapshot → BOOKED
+│   │   ├── service.py         # confirm: re-validate → S2 inventory check → reference → BOOKED snapshot;
+│   │   │                      # a second confirm returns the same reference
 │   │   └── repository.py      # reservations table
 │   │
 │   ├── inventory/             # booking uses up seats and rooms                           (S2)
@@ -329,12 +345,12 @@ The frontend computes nothing: no prices, no rules, no city choice. It renders w
 | Feature | Backend | Frontend | Database |
 |---|---|---|---|
 | M1 Request form | `packages/schemas.py`, `catalog/router.py` | `RequestForm`, `ChildAgesInput` | — |
-| M2 Build one package | `builder/*`, `packages/service.py` | `RequestPage`, `NoPackagePanel` | `trip_requests`, `packages`, `package_versions` |
+| M2 Build one package | `builder/*`, `packages/service.py` | `RequestPage`, `NoPackagePanel` | `trips`, `packages`, `package_versions` |
 | M3 Rules respected | `rules/*` | — | — |
 | M4 Day-by-day plan | `packages/timeline.py` | `DayTimeline`, `DayCard`, `ItemRow` | — |
 | M5 Total + export | `pricing/*`, `export/*` | `BudgetBar`, `PriceBreakdown` | — |
 | M6 Change package | `changes/*` | `ChangeDrawer`, `OptionList` | `package_versions` |
-| M7 Confirm + summary | `reservations/*`, `export/trip_format.py` | `ReservationPage`, `ReservationSummary` | `reservations` |
+| M7 Confirm + summary | `reservations/*`, `export/trip_format.py` | `ReservationPage`, `ReservationSummary` | `reservations`, `reservation_items` |
 | M8 Budget too small | `builder/selector.py`, `builder/failures.py` | `OverBudgetPanel` | — |
 | G1 Knock-on effects | `changes/side_effects.py` | `SideEffectsAlert` | — |
 | G2 Price difference | `changes/options.py` | `PriceDiff` | — |
@@ -351,7 +367,7 @@ The frontend computes nothing: no prices, no rules, no city choice. It renders w
 |---|---|---|
 | Both (Phase 0, **done**) | `core/config.py`, `core/errors.py`, `core/database.py`, `core/migrate.py`, `core/package_model.py`, `catalog/seed.py`, `main.py`, `stubs.py` (deleted after M-3), `database/`, router skeletons, `tests/test_phase0.py` | — |
 | A (engine) | `core/timeutil.py`, `core/money.py`, `catalog/` (models, loader, indexes, store, router), `pricing/`, `rules/`, `builder/`, `changes/options.py` + `side_effects.py`, `parser/`, `tests/unit`, `tests/oracle` | Pure functions: `build`, `rebuild`, `validate`, `options`, `apply_change` (see Project.md) |
-| B (API + UI + DB) | `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `frontend/`, `tests/api`; extends `core/database.py` and `database/` | API contract in `docs/PRD.md` section 10, frozen in Phase 0 |
+| B (API + UI + DB) | `core/engine_adapter.py`, `models/`, `packages/`, `changes/router.py` + `apply.py`, `export/`, `reservations/`, `inventory/`, `frontend/`, `tests/api`; extends `core/database.py` and `database/` | API contract in `docs/PRD.md` section 10, frozen in Phase 0 |
 
 ---
 

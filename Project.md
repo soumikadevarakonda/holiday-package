@@ -38,7 +38,7 @@ The catalog now lives in **MySQL tables that follow [database/travel_platform_er
 - `data/catalog/*.json` stays the read-only source. `catalog/seed.py` copies it into the tables on startup, and only when the files change.
 - At M-1, Person A's `catalog/loader.py` reads these tables **once at startup** into the in-memory `CatalogStore`. The engine never queries MySQL per request, so it stays fast and testable.
 - The ER diagram shows key columns only. The schema adds every field the rules need (prices, service hours, opening days, …). The differences are listed in [database/README.md](database/README.md).
-- The app-state tables (`trip_requests`, `packages`, `package_versions`, `reservations`, `inventory_usage`) are now `006–010`.
+- The app-state tables are `006–011` (after the merge: `trips`, `packages`, `package_versions`, `reservations`, `reservation_items`, `inventory_usage`, matching the ORM models).
 
 > Shared files after Phase 0: `core/package_model.py`, `core/config.py` and `main.py` (router and startup lines only). Changing them needs both people to agree.
 
@@ -97,30 +97,44 @@ Legend: ✅ done · ⏳ stub in place, real version due · 🔶 partly done · �
 - An arrival-day visit that no longer fits is removed, with a side-effect message.
 - Fast and brute-force search agree on every city plan total of every fixture.
 
-**Person A's backend work is complete.** What's left is joint: the sync checks with Person B's endpoints (M-2 … M-4), and fixes they turn up.
+**Person A's backend work is complete.**
 
-### Person B — API + Database
+### Person B — API + Database (merged from `api-integration`)
 
-| Folder / file | What it does | Features |
-|---|---|---|
-| `database/schema/006–010_*.sql` | App-state tables (written in Phase 0). Extend them if needed with a new numbered file, never by editing a file already applied | — |
-| `docker-compose.yml`, `start.sh` | Add the frontend service / start command after M-2 | — |
-| `backend/app/core/database.py` | Written in Phase 0 (`get_db`, `db_ping`); add helpers if needed | — |
-| `backend/app/packages/schemas.py` | Pydantic request/response models, M1 field checks (`422`) | M1 |
-| `backend/app/packages/repository.py` | Save / load requests, packages, versions | M2 |
-| `backend/app/packages/service.py` | Validate request → `build()` → save version → response | M2, M8 |
-| `backend/app/packages/timeline.py` | Day-by-day plan in time order | M4 |
-| `backend/app/packages/router.py` | **Build, get, city-plans, rebuild, undo** | M2, M4, G3, G4 |
-| `backend/app/changes/apply.py` | Apply a change on a copy → `validate()` → save or `409` | M6 |
-| `backend/app/changes/router.py` | **Options + PATCH** | M6, G1, G2 |
-| `backend/app/export/trip_format.py` | Package → shared trip format JSON (DATA_DICTIONARY section 4; times as `YYYY-MM-DDTHH:MM`, match `data/trip_format_example.json`) | M5, M7 |
-| `backend/app/export/router.py` | **Export** | M5 |
-| `backend/app/reservations/reference.py` | Random 10-digit number, retry on duplicate | M7 |
-| `backend/app/reservations/repository.py` | `reservations` table | M7 |
-| `backend/app/reservations/service.py` | Confirm transaction (re-validate → inventory → snapshot → BOOKED) | M7, S2 |
-| `backend/app/reservations/router.py` | **Confirm + lookup** | M7 |
-| `backend/app/inventory/service.py`, `repository.py` | Effective seats / rooms = catalog − booked | S2 |
-| `backend/tests/api/*` | `test_packages_api`, `test_changes_api`, `test_reservations_api` | — |
+Soumika's API layer, merged into `Khushi` and wired to the real engine through `core/engine_adapter.py`.
+
+| Folder / file | What it does | Features | Status |
+|---|---|---|---|
+| `database/schema/006–011_*.sql` | App-state tables: `trips`, `packages`, `package_versions`, `reservations`, `reservation_items`, `inventory_usage`. Mirror the ORM models column for column | — | ✅ |
+| `backend/app/models/*.py` | SQLAlchemy ORM models for those tables | — | ✅ |
+| `backend/app/core/database.py` | Engine, ORM session factory, `get_db()` (one session per request: commit / rollback), `db_ping()` | — | ✅ |
+| `backend/app/core/engine_adapter.py` | **The bridge to the engine**: form → `TripRequest` (city or airport code, `UAE` alias), snapshot ↔ `Package`, PATCH body → `Change`, dataclasses → dicts, `ChangeError` → `422`; only an import failure → `503` | all | ✅ |
+| `backend/app/core/errors.py` | `AppError` + `NotFoundError`, `ConflictError`, `ValidationError`, `BadRequestError`, `EngineUnavailableError`; `422` = `INVALID_INPUT` + `field_errors` | — | ✅ |
+| `backend/app/packages/schemas.py` | M1 checks (window, nights, return date, child ages, ≤ 9 travelers, budget > 0); accepts PRD names (`country`, `budget_inr`, `children_ages`) and form names | M1 | ✅ |
+| `backend/app/packages/repository.py` | Trips, packages, versions; undo appends a restored version | M2, M6 | ✅ |
+| `backend/app/packages/service.py` | Build → save version 1 → response with `totals`, `timeline`, `city_plans`, G4 `alternatives`; OVER_BUDGET package saved so it can be viewed; rebuild, undo | M2, M4, M5, M8, G3, G4 | ✅ |
+| `backend/app/packages/timeline.py` | Day-by-day plan sorted by full local date-time (overnight arrival flight shown on day 1) | M4 | ✅ |
+| `backend/app/packages/router.py` | **Build, get, list, city-plans, rebuild, undo** | M2, M4, G3, G4 | ✅ |
+| `backend/app/changes/apply.py` | Options; PATCH → `apply_change` → `validate` → new version, or `409 RULE_VIOLATION` / `VERSION_CONFLICT` / `ALREADY_BOOKED` | M6, G1, G2 | ✅ |
+| `backend/app/changes/router.py` | **Options (hotel / flight / attraction) + PATCH** | M6, G1, G2 | ✅ |
+| `backend/app/export/trip_format.py` + `router.py` | **Export** as an attachment; validated first; `BOOKED` + `booking.reference` after confirm | M5, M7 | ✅ |
+| `backend/app/reservations/*` | **Confirm** (10-digit reference, retry on duplicate, frozen BOOKED snapshot, idempotent) + **lookup** (`400` bad format, `404 "Reservation not found"`) | M7 | ✅ |
+| `backend/app/inventory/*` | Effective seats / rooms = catalog − booked; refused with `409 SOLD_OUT` | S2 | ✅ |
+| `backend/tests/api/*` | 44 API tests on the **real engine** with in-memory SQLite: health/meta, parse, packages, changes, reservations, export | — | ✅ |
+| `docker-compose.yml`, `start.sh` | Add the frontend service / start command | — | ⬜ with the frontend |
+
+**Bugs fixed during the merge**
+- **Rebuild response:** it returned the old version. New versions are now appended through the relationship.
+- **Package IDs:** every build gets a unique ID. The engine's `trip_id` is the same for identical requests.
+- **Timeline:** the overnight arrival flight was dropped and mis-sorted.
+- **Double confirm:** it returned `409`; the PRD wants the same reference back.
+- **Engine adapter:** it hid every engine error as `503 ENGINE_UNAVAILABLE`.
+
+**Removed as duplicates of the engine side:**
+- `datasets/` (byte-identical to `data/`);
+- the repo-root `database/*.py` package (second catalog loader, indexes, validator, config, connection, repositories), whose ORM models moved to `backend/app/models/`;
+- `backend/app/catalog/service.py`;
+- her parser and `/api/meta`, replaced by the engine's, which match the PRD.
 
 ---
 
@@ -161,18 +175,18 @@ All stubs are replaced, and `app/stubs.py` is deleted; the Menon fixture loader 
 | 1 | `GET /api/health` | Both (Phase 0) | — | Phase 0 |
 | 2 | `GET /api/meta` | **A** | catalog store | ✅ M-1 |
 | 3 | `POST /api/parse` | **A** | parser | ✅ M-4 |
-| 4 | `POST /api/packages` | **B** | `build()` ✅ real | M-2 |
-| 5 | `GET /api/packages/{id}` | **B** | — (DB + timeline) | M-1 |
-| 6 | `GET /api/packages/{id}/options/hotel?city=` | **B** | `options()` | M-3 (engine ✅, endpoint ⬜) |
-| 7 | `GET /api/packages/{id}/options/flight?leg=` | **B** | `options()` | M-3 (engine ✅, endpoint ⬜) |
-| 8 | `GET /api/packages/{id}/options/attraction?date=` | **B** | `options()` | M-3 (engine ✅, endpoint ⬜) |
-| 9 | `PATCH /api/packages/{id}` | **B** | `apply_change()` + `validate()` | M-3 (engine ✅, endpoint ⬜) |
-| 10 | `GET /api/packages/{id}/city-plans` | **B** | `BuildResult.city_plans` | M-2 |
-| 11 | `POST /api/packages/{id}/rebuild` | **B** | `rebuild()` | M-4 (engine ✅, endpoint ⬜) |
-| 12 | `POST /api/packages/{id}/undo` | **B** | — (DB) | M-1 |
-| 13 | `GET /api/packages/{id}/export` | **B** | `validate()` | M-2 |
-| 14 | `POST /api/packages/{id}/confirm` | **B** | `validate()` | M-2 |
-| 15 | `GET /api/reservations/{ref}` | **B** | — (DB) | M-1 |
+| 4 | `POST /api/packages` | **B** | `build()` ✅ real | ✅ M-2 |
+| 5 | `GET /api/packages/{id}` | **B** | — (DB + timeline) | ✅ M-1 |
+| 6 | `GET /api/packages/{id}/options/hotel?city=` | **B** | `options()` | ✅ M-3 |
+| 7 | `GET /api/packages/{id}/options/flight?leg=` | **B** | `options()` | ✅ M-3 |
+| 8 | `GET /api/packages/{id}/options/attraction?date=` | **B** | `options()` | ✅ M-3 |
+| 9 | `PATCH /api/packages/{id}` | **B** | `apply_change()` + `validate()` | ✅ M-3 |
+| 10 | `GET /api/packages/{id}/city-plans` | **B** | `BuildResult.city_plans` | ✅ M-2 |
+| 11 | `POST /api/packages/{id}/rebuild` | **B** | `rebuild()` | ✅ M-4 |
+| 12 | `POST /api/packages/{id}/undo` | **B** | — (DB) | ✅ M-1 |
+| 13 | `GET /api/packages/{id}/export` | **B** | `validate()` | ✅ M-2 |
+| 14 | `POST /api/packages/{id}/confirm` | **B** | `validate()` | ✅ M-2 |
+| 15 | `GET /api/reservations/{ref}` | **B** | — (DB) | ✅ M-1 |
 
 Person B owns more endpoints, but most are thin. Person A owns the hard logic behind them.
 
