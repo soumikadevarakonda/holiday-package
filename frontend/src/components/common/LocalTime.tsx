@@ -6,18 +6,14 @@ interface LocalTimeProps {
   className?: string;
 }
 
+/** Shows HH:MM from "YYYY-MM-DDTHH:MM" (catalog times are already local). */
 export const LocalTime: React.FC<LocalTimeProps> = ({ timeStr, zone, className = '' }) => {
   if (!timeStr) return null;
-  let formatted = timeStr;
-  if (timeStr.includes('T')) {
-    formatted = timeStr.split('T')[1].slice(0, 5);
-  } else if (timeStr.length > 5 && timeStr.includes(':')) {
-    formatted = timeStr.slice(0, 5);
-  }
-
+  const t = timeStr.includes('T') ? timeStr.split('T')[1].slice(0, 5) : timeStr.slice(0, 5);
   return (
-    <span className={`font-currency-md text-currency-md font-bold text-on-surface ${className}`}>
-      {formatted} {zone ? <span className="font-label-sm text-label-sm text-on-surface-variant font-normal">{zone}</span> : null}
+    <span className={`tabular-nums font-semibold ${className}`}>
+      {t}
+      {zone && <span className="ml-1 text-xs font-normal text-ink-mute">{zone}</span>}
     </span>
   );
 };
