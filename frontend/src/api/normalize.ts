@@ -137,10 +137,13 @@ export function normalizeOption(raw: any): ChangeOption {
   return {
     ...raw,
     key: `${raw.catalog_id}|${raw.room_id ?? ''}|${raw.start ?? ''}`,
-    name: raw.label || raw.name || raw.catalog_id,
     current: Boolean(d.current),
     rating: d.rating,
-    room_type: d.room_type ? `${d.room_type.replace(/_/g, ' ')}${d.rooms > 1 ? ` × ${d.rooms}` : ''}${d.area ? ` • ${d.area}` : ''}` : undefined,
+    room_type:
+      d.room_name || d.room_type
+        ? `${d.rooms > 1 ? `${d.rooms} × ` : ''}${d.room_name || d.room_type.replace(/_/g, ' ').toLowerCase()}${d.area ? ` · ${d.area}` : ''}`
+        : undefined,
+    name: (raw.label || raw.name || raw.catalog_id).split(' · ')[0],
     airline: d.airline,
     departure_time: hhmm(d.departure_local),
     arrival_time: hhmm(d.arrival_local),
