@@ -42,7 +42,22 @@ def test_airport_code_and_uae_alias_are_accepted(client):
 
 def test_mode_three_returns_g4_alternatives(client):
     d = build(client, mode="three").json()
-    assert set(d["alternatives"]) == {"cheapest", "fastest", "best_rated"}
+    alts = d["alternatives"]
+    assert set(alts) == {"cheapest", "fastest", "best_rated"}
+    assert alts["cheapest"]["total_inr"] == min(a["total_inr"] for a in alts.values())
+    assert alts["fastest"]["travel_minutes"] == min(a["travel_minutes"] for a in alts.values())
+    assert alts["best_rated"]["avg_stars"] == max(a["avg_stars"] for a in alts.values())
+    assert alts["best_rated"]["within_budget"]
+    for a in alts.values():  # each one is a saved package the traveler can open, change and book
+        opened = client.get(f"/api/packages/{a['package_id']}").json()
+        assert opened["total_inr"] == a["total_inr"]
+
+
+def test_g4_fastest_can_differ_from_cheapest(client):
+    d = build(client, departure_city="Delhi", country="United Arab Emirates", start_date="2027-04-06",
+              children_ages=[], budget_inr=300000, mode="three").json()["alternatives"]
+    assert d["fastest"]["travel_minutes"] < d["cheapest"]["travel_minutes"]
+    assert d["best_rated"]["avg_stars"] > d["cheapest"]["avg_stars"]
 
 
 def test_over_budget_returns_cheapest_and_suggestion(client):

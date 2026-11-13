@@ -94,3 +94,12 @@ def test_booked_package_cannot_change(client, pkg):
     assert client.post(f"/api/packages/{pkg_id}/confirm", json={}).status_code == 201
     r = patch(client, pkg_id, {"type": "flight", "leg": "arrival", "flight_id": "FL-405"})
     assert r.status_code == 409 and r.json()["code"] == "ALREADY_BOOKED"
+
+
+def test_later_flight_home_warns_about_check_out(client):
+    """G1: a return flight that makes you leave the hotel after check-out gives a warning."""
+    pkg = build(client, country="United Arab Emirates", start_date="2027-04-13", nights=5, children_ages=[],
+                budget_inr=900000).json()
+    r = patch(client, pkg["package_id"], {"type": "flight", "leg": "return", "flight_id": "FL-1320"})
+    assert r.status_code == 200
+    assert any("check-out" in w for w in r.json()["warnings"])

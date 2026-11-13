@@ -4,6 +4,7 @@ Package service orchestrating request validation, engine build, persistence, and
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -13,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.core.engine_adapter import get_engine_adapter
 from app.core.errors import ConflictError, NotFoundError
+from app.packages.item_details import add_day_cities, trip_metrics, with_details
 from app.packages.repository import PackageRepository
 from app.packages.schemas import TripRequestSchema
-from app.packages.item_details import add_day_cities, with_details
 from app.packages.timeline import generate_package_timeline
 
 ITEM_TYPES = ("flight", "hotel", "transfer", "attraction")
@@ -93,12 +94,45 @@ class PackageService:
             city_plans=city_plans,
         )
         view = self._package_view(package.package_id, pkg_data, package.status, package.current_version_no)
+        alternatives = self._save_alternatives(build_result.alternatives or {}, pkg_id, pkg_data,
+                                               persisted_trip.trip_id, city_plans)
         view.update({"outcome": outcome, "trip_id": persisted_trip.trip_id, "city_plans": city_plans,
-                     "alternatives": build_result.alternatives or {}})
+                     "alternatives": alternatives})
         if outcome == "OVER_BUDGET":
             view.update({"cheapest_total": build_result.cheapest_total, "over_by": build_result.over_by,
                          "suggestion": build_result.suggestion, "cheapest_package": pkg_data})
         return view
+
+    def _save_alternatives(self, alts: dict[str, Any], main_id: str, main_data: dict[str, Any], trip_id: str,
+                           city_plans: list[Any]) -> dict[str, Any]:
+        """G4: save each of cheapest / fastest / best rated as its own package so the traveler can pick one and
+        carry on changing or booking it. Identical packages share one id (the main package when it matches)."""
+        def sig(data: dict[str, Any]) -> str:
+            return json.dumps([(i.get("catalog_id"), i.get("room_id"), i.get("start")) for i in data.get("items", [])])
+
+        saved = {sig(main_data): main_id}
+        out: dict[str, Any] = {}
+        for key, alt in alts.items():
+            data = dict(alt)
+            s = sig(data)
+            if s not in saved:
+                alt_id = _new_package_id()
+                data["trip_id"] = alt_id
+                total = int(data.get("total_inr", 0))
+                self.repo.create_package(
+                    package_id=alt_id, trip_id=trip_id, initial_data=data,
+                    status="PLANNED" if total <= int(data.get("budget_inr") or 0) else "OVER_BUDGET",
+                    total_price=Decimal(str(total)), city_plans=city_plans,
+                )
+                saved[s] = alt_id
+            out[key] = {
+                "package_id": saved[s],
+                "total_inr": int(data.get("total_inr", 0)),
+                "city_plan": data.get("city_plan", []),
+                "within_budget": int(data.get("total_inr", 0)) <= int(data.get("budget_inr") or 0),
+                **trip_metrics(data.get("items", [])),
+            }
+        return out
 
     def get_package(self, package_id: str) -> dict[str, Any]:
         """Persisted package, its current version, totals and the day-by-day plan (survives restart)."""

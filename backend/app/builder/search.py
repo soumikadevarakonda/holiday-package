@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.builder import selector
+from app.builder import alternatives, selector
 from app.builder.assemble import Parts, assemble
 from app.builder.attractions import schedule
 from app.builder.city_plans import enumerate_plans
@@ -241,7 +241,7 @@ def build(req: TripRequest, mode: str = "default", strategy: str = "fast") -> Bu
 
     store = get_store()
     n_cities = len(store.get_country(req.country).cities)
-    alts = selector.alternatives(candidates, req.budget_inr) if mode == "three" else {}
+    alts = alternatives.three([pkg for _, pkg in candidates], req.budget_inr) if mode == "three" else {}
     chosen = selector.choose(candidates, req.nights, n_cities, req.budget_inr, store.rules.min_nights_per_city)
     if chosen:
         return BuildResult(outcome="PACKAGE", package=chosen[1], alternatives=alts, city_plans=summaries)

@@ -153,7 +153,7 @@ def _change_hotel(pkg: Package, ch: Change, fx: list[str], warn: list[str]) -> N
     if item is stays[0] and at_arr:
         _retime_arrival(pkg, store.get_flight(arr_f.catalog_id), hotel, at_arr, fx, warn)
     if item is stays[-1] and at_ret:
-        _retime_return(store.get_flight(ret_f.catalog_id), hotel, at_ret, adults, children, fx)
+        _retime_return(store.get_flight(ret_f.catalog_id), hotel, at_ret, adults, children, fx, warn)
 
 
 def _retime_arrival(pkg, flight, hotel, at_item: Item, fx: list[str], warn: list[str]) -> None:
@@ -171,7 +171,8 @@ def _retime_arrival(pkg, flight, hotel, at_item: Item, fx: list[str], warn: list
         warn.append(f"You reach {hotel.name} at {opts[0].end:%H:%M}; check-in opens at {hotel.check_in_from}.")
 
 
-def _retime_return(flight, hotel, at_item: Item, adults: int, children: int, fx: list[str]) -> None:
+def _retime_return(flight, hotel, at_item: Item, adults: int, children: int, fx: list[str],
+                   warn: list[str] | None = None) -> None:
     opts = return_options(flight, hotel, adults, children)
     if not opts:
         fx.append(f"No transfer from {hotel.name} reaches {flight.from_airport} 3 hours before the flight; "
@@ -181,6 +182,10 @@ def _retime_return(flight, hotel, at_item: Item, adults: int, children: int, fx:
     _set_transfer(at_item, opts[0], adults, children)
     if (at_item.catalog_id, at_item.start) != old:
         fx.append(f"Return transfer is now {at_item.name}, leaving the hotel at {opts[0].start:%H:%M}.")
+    # G1: leaving the hotel after check-out means a late check-out (or luggage storage) is needed
+    if warn is not None and hotel.check_out_until and opts[0].start.strftime("%H:%M") > hotel.check_out_until:
+        warn.append(f"You leave {hotel.name} at {opts[0].start:%H:%M} but check-out is by {hotel.check_out_until}; "
+                    "ask the hotel for a late check-out or to keep your luggage.")
 
 
 def _change_flight(pkg: Package, ch: Change, fx: list[str], warn: list[str]) -> None:
@@ -206,7 +211,7 @@ def _change_flight(pkg: Package, ch: Change, fx: list[str], warn: list[str]) -> 
             _retime_arrival(pkg, flight, store.get_hotel(stays[0].catalog_id), at_arr, fx, warn)
         _drop_unreachable_visits(pkg, date.fromisoformat(pkg.start_date), fx)
     elif at_ret and stays:
-        _retime_return(flight, store.get_hotel(stays[-1].catalog_id), at_ret, adults, children, fx)
+        _retime_return(flight, store.get_hotel(stays[-1].catalog_id), at_ret, adults, children, fx, warn)
 
 
 def _drop_unreachable_visits(pkg: Package, day: date, fx: list[str]) -> None:

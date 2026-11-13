@@ -103,3 +103,23 @@ def add_day_cities(timeline: list[dict[str, Any]], items: list[dict[str, Any]]) 
             city = stays[-1][2] if d >= stays[-1][1] else stays[0][2]
         day["city"] = city
     return timeline
+
+
+def trip_metrics(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """G4 numbers for a stored package: travel minutes (flights + inter-city transfers) and stars per night."""
+    store = get_store()
+    minutes, star_nights, nights = 0, 0, 0
+    for it in items:
+        kind, cid = it.get("type"), it.get("catalog_id", "")
+        if kind == "flight":
+            f = store.get_flight(cid)
+            minutes += f.duration_minutes if f else 0
+        elif kind == "transfer":
+            t = store.get_transfer(cid)
+            if t and t.from_city and t.to_city:
+                minutes += t.duration_minutes
+        elif kind == "hotel":
+            h, n = store.get_hotel(cid), _nights(it.get("start"), it.get("end")) or 0
+            star_nights += (h.stars if h else 0) * n
+            nights += n
+    return {"travel_minutes": minutes, "avg_stars": round(star_nights / nights, 2) if nights else 0}
