@@ -5,6 +5,7 @@ import { CityPlanHeader } from '../components/package/CityPlanHeader';
 import { DayTimeline } from '../components/package/DayTimeline';
 import { PriceBreakdown } from '../components/package/PriceBreakdown';
 import { CityPlanPicker } from '../components/package/CityPlanPicker';
+import { TravelTips } from '../components/package/TravelTips';
 import { ChangeDrawer } from '../components/change/ChangeDrawer';
 import { SideEffectsAlert } from '../components/change/SideEffectsAlert';
 import { ConfirmDialog, type BookerDetails } from '../components/reservation/ConfirmDialog';
@@ -242,6 +243,8 @@ export const PackagePage: React.FC = () => {
               loading={actionLoading}
             />
           )}
+
+          <TravelTips pkg={pkg} items={items} />
         </div>
 
         <PriceBreakdown
