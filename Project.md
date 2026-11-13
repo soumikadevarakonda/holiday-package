@@ -48,29 +48,56 @@ The catalog now lives in **MySQL tables that follow [database/travel_platform_er
 
 ### Person A — Engine
 
-| Folder / file | What it does | Features |
-|---|---|---|
-| `backend/app/core/timeutil.py` | `HH:MM` and `24:00` parsing, windows past midnight, inclusive ends, weekday | all |
-| `backend/app/core/money.py` | Integer INR helpers | M5 |
-| `backend/app/catalog/models.py` | Dataclasses for every catalog record (keep hotel / attraction `image`) | M1 |
-| `backend/app/catalog/loader.py` | Read the MySQL catalog tables (seeded in Phase 0) → models, once at startup. Prices are already int INR; `child_price` NULL ≠ 0; JSON columns (`open_days`, `closed_dates`, `aliases`) → lists. Call it from the `lifespan` in `main.py` | M1 |
-| `backend/app/catalog/indexes.py` | Lookup dicts (flights by airport + date, availability by room + date, …) | all |
-| `backend/app/catalog/store.py` | Replace the stub: `CatalogStore` singleton with models, indexes, query functions; set `loaded = True` | all |
-| `backend/app/catalog/router.py` | **`GET /api/meta`** | M1 |
-| `backend/app/pricing/calculator.py` | Price formulas (flight, hotel, transfer, attraction) | M5, P1 |
-| `backend/app/pricing/totals.py` | Line items → total, budget left / over | M5 |
-| `backend/app/rules/violations.py` | `Violation(rule_id, item_ref, message)` | M3 |
-| `backend/app/rules/validator.py` | `validate(package)` — runs all checks | M3 |
-| `backend/app/rules/checks/*.py` | `dates`, `flights`, `airport_transfers`, `intercity`, `hotels`, `attractions`, `prices` | M3 |
-| `backend/app/builder/*.py` | `city_plans`, `hotels`, `flights`, `transfers`, `attractions`, `assemble`, `search`, `selector`, `failures` | M2, M8, G3, G4 |
-| `backend/app/changes/options.py` | Valid alternatives + `price_diff` | M6, G2 |
-| `backend/app/changes/side_effects.py` | Re-time transfers, drop attractions that no longer fit, warnings | G1 |
-| `backend/app/parser/quick_request.py` | Regex parser for plain text | S1 |
-| `backend/app/parser/router.py` | **`POST /api/parse`** | S1 |
-| `backend/tests/conftest.py` | Add a fixture that loads the real catalog once (keep the Phase 0 `client` / `menon` fixtures) | — |
-| `backend/tests/fixtures/requests.json` | Menon, UAE, DEL, 1A+3C, 8 travelers, late KIX, early return, bad date, tiny budget | — |
-| `backend/tests/unit/*` | `test_timeutil`, `test_pricing`, `test_rules`, `test_city_plans`, `test_builder` | — |
-| `backend/tests/oracle/test_fast_vs_brute.py` | Fast and brute search give the same totals | — |
+| Folder / file | What it does | Features | Status |
+|---|---|---|---|
+| `backend/app/core/timeutil.py` | `HH:MM` and `24:00` parsing, windows past midnight, inclusive ends, weekday, ISO date-times, `next_grid_slot` | all | ✅ M-1 |
+| `backend/app/core/money.py` | `format_inr()`: Indian grouping (₹3,50,000) | M5 | ✅ M-1 |
+| `backend/app/catalog/models.py` | Frozen dataclasses for every catalog record, plus `DepartureCity`, `IntercityLink`, `RulesMeta` | M1 | ✅ M-1 |
+| `backend/app/catalog/loader.py` | MySQL catalog tables → models at startup (`child_price` NULL ≠ 0, JSON columns → lists). Falls back to the JSON files when MySQL is unreachable or `DB_AUTO_INIT=false` (tests). Verified: DB and JSON loads are identical | M1 | ✅ M-1 |
+| `backend/app/catalog/indexes.py` | `CatalogIndexes`: flights by (from, arrival date) / (to, departure date), airports serving a city, hotels by city, rooms by hotel, availability by (room, date), airport transfers by (airport, city), inter-city by route, link transfer IDs, attractions by city, `max_flight_seats` | all | ✅ M-1 |
+| `backend/app/catalog/store.py` | `CatalogStore` singleton, `load()`, query helpers (`get_arrival_flights`, `get_hotels_in_city`, `get_rooms_left`, …); loaded in `main.py` lifespan | all | ✅ M-1 |
+| `backend/app/catalog/router.py` | **`GET /api/meta`**: departure cities, countries + cities, rules, `max_flight_seats` | M1 | ✅ M-1 |
+| `backend/app/pricing/calculator.py` | Price formulas (flight, hotel, transfer PER_PERSON / PER_VEHICLE, attraction; `is not None` on `child_price`) | M5, P1 | ✅ M-1 |
+| `backend/app/pricing/totals.py` | `compute_totals(items, budget)` → `Totals` by type, left / over | M5 | ✅ M-1 |
+| `backend/app/rules/violations.py` | `Violation` + `to_dicts()` (Phase 0) | M3 | ✅ Phase 0 |
+| `backend/app/rules/context.py` | Parses a package once (flights, stays, transfers by kind, visits) for all checks | M3 | ✅ M-2 |
+| `backend/app/rules/validator.py` | `validate(pkg, *, initial, seats_used, rooms_used)`: runs all checks | M3 | ✅ M-2 |
+| `backend/app/rules/checks/*.py` | `dates` (D1–D3), `flights` (F1–F4), `airport_transfers` (AT1–AT4), `intercity` (CT1), `hotels` (H1–H4), `attractions` (A1–A4), `prices` (P1, 1%) | M3 | ✅ M-2 |
+| `backend/app/builder/*.py` | `city_plans` (enumerate), `hotels` (memoized cheapest stays), `flights`, `transfers` (+60 / −180 / grid ≥ 10:00), `attractions` (matching: 1 per full day), `assemble`, `failures`, `selector` (city rule + G4), `search` (`build`, `rebuild`, M8 suggestion) | M2, M8, G3, G4 | ✅ M-2 (G3 `rebuild` and G4 `mode="three"` included) |
+| `backend/app/changes/options.py` | Hotel (per city), flight (arrival / return) and attraction (per date) alternatives. Each is applied to a copy and validated, so only valid choices are offered; `price_diff` = new total − current total. The current choice is flagged in `details.current` | M6, G2 | ✅ M-3 |
+| `backend/app/changes/side_effects.py` | `apply_change()` for hotel / flight / add / remove attraction. Re-picks and re-times airport transfers, drops arrival-day visits that no longer fit, warns about check-in time and empty days. Raises `ChangeError` for impossible requests | M6, G1 | ✅ M-3 |
+| `backend/app/parser/quick_request.py` | Regex + keywords: city / country aliases (Bombay, Tokyo, UAE…), dates (10 Apr, April 5th, 8/4, ISO), nights / "a week", adults, kids + ages, budget (3.5 lakh, ₹2,50,000, 300k) | S1 | ✅ M-4 |
+| `backend/app/parser/router.py` | **`POST /api/parse`** → `{request, unparsed, warnings}` | S1 | ✅ M-4 |
+| `backend/tests/conftest.py` | `catalog_store` (session), `client`, `menon` fixtures; forces `DB_AUTO_INIT=false` so tests use the JSON catalog | — | ✅ M-1 |
+| `backend/tests/fixtures/requests.json` | 9 requests with expected outcomes: Menon, UAE (BOM), DEL → HND, 1A+3C, Japan 10 nights, return after window, 10 travelers, 8 travelers on full flights, tiny budget | — | ✅ M-2 |
+| `backend/tests/unit/*` | `test_timeutil`, `test_pricing`, `test_rules` (pass + fail per rule ID), `test_city_plans` (135 plans), `test_builder` (every fixture, determinism, M8, rebuild), `test_changes` (every option stays valid, G1 effects, errors), `test_parser` | — | ✅ 7 of 7 |
+| `backend/tests/oracle/test_fast_vs_brute.py` | `strategy="brute"` tries every flight × transfer × hotel combination at both ends; plan totals must equal the fast search on every fixture | — | ✅ M-4 |
+| `backend/tests/api/test_packages_api.py` | `GET /api/meta` and `POST /api/parse` tests (A's endpoints; B adds package tests here) | M1, S1 | ✅ |
+| `backend/tests/helpers.py` | `menon_package()`, `to_request()`, `MENON_REQUEST` (replaces the deleted `app/stubs.py`) | — | ✅ |
+
+Legend: ✅ done · ⏳ stub in place, real version due · 🔶 partly done · ⬜ not started.
+
+**M-1 review notes (all handled in M-2):**
+- ✅ The inter-city builder and CT1 check service hours and the frequency grid, not just `next_grid_slot()`.
+- ✅ The builder and AT1 match the transfer `area == hotel.area or area is None`.
+- ✅ `/api/health` has `catalog_source` (`"mysql"` normally, `"json"` if MySQL was unreachable).
+
+**M-2 results** (from `tests/fixtures/requests.json`; the builder runs in 0.01–0.2 s):
+
+| Request | Outcome |
+|---|---|
+| Menon (BLR → Japan, 6 nights, 2A + 1C) | Tokyo 2 + Osaka 4, **₹2,30,440** (matches the PRD estimate); validates `[]` |
+| Tiny budget (₹50,000) | `OVER_BUDGET`: cheapest ₹2,19,324 (Tokyo only) + suggestion |
+| Japan 10 nights | 135 plans checked; Tokyo 2 + Kyoto 6 + Osaka 2 |
+| Start 18 Apr + 3 nights | `NO_PACKAGE`: "Flights run from 1 Apr 2027 to 20 Apr 2027. A 3-night trip from 18 Apr 2027 returns on 21 Apr 2027." |
+| 10 travelers | `NO_PACKAGE`: "No flight has more than 9 seats left; …" |
+
+**M-3 / M-4 results:** 103 tests green.
+- Picking a later arrival flight (FL-405, lands 21:30) switches the arrival transfer to the Narita taxi at 22:30 (PRD edge case).
+- An arrival-day visit that no longer fits is removed, with a side-effect message.
+- Fast and brute-force search agree on every city plan total of every fixture.
+
+**Person A's backend work is complete.** What's left is joint: the sync checks with Person B's endpoints (M-2 … M-4), and fixes they turn up.
 
 ### Person B — API + Database
 
@@ -105,9 +132,9 @@ Person A owns these functions. Person B only **calls** them. The signatures are 
 |---|---|---|---|
 | 1 | `build(req: TripRequest, mode="default", strategy="fast") -> BuildResult` (`builder/search.py`) | `BuildResult(outcome, package, alternatives, city_plans, cheapest_total, over_by, suggestion, reason)`; `outcome` ∈ `PACKAGE`, `OVER_BUDGET`, `NO_PACKAGE` | `packages/service.py` |
 | 2 | `rebuild(req, city_plan) -> BuildResult` (`builder/search.py`) | Same as above, on one plan | `packages/service.py` |
-| 3 | `validate(pkg: Package) -> list[Violation]` (`rules/validator.py`) | Empty list = valid | `changes/apply.py`, `reservations/service.py`, `export/router.py` |
-| 4 | `options(pkg, kind, **params) -> list[Option]` (`changes/options.py`) | `kind` ∈ `hotel`, `flight`, `attraction`; each option has `price_diff` | `changes/router.py` |
-| 5 | `apply_change(pkg, change) -> ChangeResult` (`changes/side_effects.py`) | `ChangeResult(package, side_effects, warnings)` — new package, **not yet validated** | `changes/apply.py` |
+| 3 | `validate(pkg: Package, *, initial=False, seats_used=None, rooms_used=None) -> list[Violation]` (`rules/validator.py`) | Empty list = valid. `initial=True` only for the first built package (A3). `seats_used` / `rooms_used` = S2 bookings from `inventory_usage` (pass them in confirm) | `changes/apply.py`, `reservations/service.py`, `export/router.py` |
+| 4 | `options(pkg, kind, **params) -> list[Option]` (`changes/options.py`) | `kind` ∈ `hotel` (`city=`), `flight` (`leg="arrival"\|"return"`), `attraction` (`date="YYYY-MM-DD"`); each option has `price_diff`, attractions a suggested `start`, `details.current` marks the current choice. Raises `ChangeError` for a bad kind / city / date | `changes/router.py` |
+| 5 | `apply_change(pkg, change) -> ChangeResult` (`changes/side_effects.py`) | `ChangeResult(package, side_effects, warnings)`: a new package (input untouched), **not yet validated**. Raises `ChangeError` (unknown ID, wrong item, room that can't fit) → B returns `422`; violations from `validate()` → B returns `409 RULE_VIOLATION` | `changes/apply.py` |
 
 Plus the catalog accessor `get_store() -> CatalogStore` (`catalog/store.py`) for B's inventory checks and `seats_left` / `rooms_left`. All types live in `core/package_model.py`.
 
@@ -115,13 +142,13 @@ Plus the catalog accessor `get_store() -> CatalogStore` (`catalog/store.py`) for
 
 | Stub | Phase 0 behaviour |
 |---|---|
-| `build` / `rebuild` | Always `PACKAGE` with the Menon package (budget set from the request); `mode="three"` fills all 3 alternatives |
-| `validate` | Always `[]` |
-| `options` | The current choice only, `price_diff = 0` |
-| `apply_change` | `remove_attraction` works; other changes return the package unchanged with a "(stub)" side effect |
-| `get_store` | Empty store, `loaded = False` |
+| `build` / `rebuild` | ✅ Real since M-2: `PACKAGE` / `OVER_BUDGET` (+ `cheapest_total`, `over_by`, `suggestion`) / `NO_PACKAGE` (+ `reason`); `city_plans` ranked; `mode="three"` fills `cheapest`, `fastest`, `best_rated` |
+| `validate` | ✅ Real since M-2: every rule ID D1–P1 |
+| `options` | ✅ Real since M-3 |
+| `apply_change` | ✅ Real since M-3 |
+| `get_store` | ✅ Real since M-1: the full catalog in memory, `loaded = True` |
 
-Person A replaces them one at a time. Delete `app/stubs.py` when none use it.
+All stubs are replaced, and `app/stubs.py` is deleted; the Menon fixture loader now lives in `tests/helpers.py`.
 
 ---
 
@@ -132,16 +159,16 @@ Person A replaces them one at a time. Delete `app/stubs.py` when none use it.
 | # | Method + path | Owner | Engine call | Real at |
 |---|---|---|---|---|
 | 1 | `GET /api/health` | Both (Phase 0) | — | Phase 0 |
-| 2 | `GET /api/meta` | **A** | catalog store | M-1 |
-| 3 | `POST /api/parse` | **A** | parser | M-4 |
-| 4 | `POST /api/packages` | **B** | `build()` | M-2 |
+| 2 | `GET /api/meta` | **A** | catalog store | ✅ M-1 |
+| 3 | `POST /api/parse` | **A** | parser | ✅ M-4 |
+| 4 | `POST /api/packages` | **B** | `build()` ✅ real | M-2 |
 | 5 | `GET /api/packages/{id}` | **B** | — (DB + timeline) | M-1 |
-| 6 | `GET /api/packages/{id}/options/hotel?city=` | **B** | `options()` | M-3 |
-| 7 | `GET /api/packages/{id}/options/flight?leg=` | **B** | `options()` | M-3 |
-| 8 | `GET /api/packages/{id}/options/attraction?date=` | **B** | `options()` | M-3 |
-| 9 | `PATCH /api/packages/{id}` | **B** | `apply_change()` + `validate()` | M-3 |
+| 6 | `GET /api/packages/{id}/options/hotel?city=` | **B** | `options()` | M-3 (engine ✅, endpoint ⬜) |
+| 7 | `GET /api/packages/{id}/options/flight?leg=` | **B** | `options()` | M-3 (engine ✅, endpoint ⬜) |
+| 8 | `GET /api/packages/{id}/options/attraction?date=` | **B** | `options()` | M-3 (engine ✅, endpoint ⬜) |
+| 9 | `PATCH /api/packages/{id}` | **B** | `apply_change()` + `validate()` | M-3 (engine ✅, endpoint ⬜) |
 | 10 | `GET /api/packages/{id}/city-plans` | **B** | `BuildResult.city_plans` | M-2 |
-| 11 | `POST /api/packages/{id}/rebuild` | **B** | `rebuild()` | M-4 |
+| 11 | `POST /api/packages/{id}/rebuild` | **B** | `rebuild()` | M-4 (engine ✅, endpoint ⬜) |
 | 12 | `POST /api/packages/{id}/undo` | **B** | — (DB) | M-1 |
 | 13 | `GET /api/packages/{id}/export` | **B** | `validate()` | M-2 |
 | 14 | `POST /api/packages/{id}/confirm` | **B** | `validate()` | M-2 |
@@ -156,10 +183,10 @@ Person B owns more endpoints, but most are thin. Person A owns the hard logic be
 | Milestone | Person A delivers | Person B delivers | Sync check (together) |
 |---|---|---|---|
 | **Phase 0** ✅ | Package model, stubs, Menon fixture | ER schema, seed, DB plumbing, Docker | App starts, `/docs` loads, catalog seeded, 8 tests green |
-| **M-1** (h 1–3) | `timeutil`, catalog loader (MySQL → memory) + indexes, `GET /api/meta`, pricing + tests | Repositories, endpoints 4, 5, 12, 15 working on stubs; reservation number | `GET /api/meta` real; build → get → undo → confirm → lookup work end-to-end on the stub package |
-| **M-2** (h 3–5) | All rule checks with one pass + one fail test each; real `build()` for Menon | Timeline, export, confirm transaction, city-plans; `tests/api` for packages + reservations | **Real** Menon package builds, exports, validates (`[]`) and confirms |
-| **M-3** (h 5–7) | `build()` outcomes `OVER_BUDGET` / `NO_PACKAGE` with reasons; `options()`; `apply_change()` | Options + PATCH endpoints, `409 RULE_VIOLATION`, `409 VERSION_CONFLICT`; `tests/api` for changes | Change hotel, flight, attraction; a bad change is refused; tiny budget gives M8 |
-| **M-4** (h 7–9) | G4 `mode="three"`, `rebuild()`, parser + `POST /api/parse`, fast vs brute oracle | Rebuild endpoint, S2 inventory in confirm, `start.sh` | All 15 endpoints real; full test suite green |
+| **M-1** (h 1–3) | ✅ `timeutil`, catalog loader (MySQL → memory, JSON fallback) + indexes + store, `GET /api/meta`, pricing + tests (21 tests green) | Repositories, endpoints 4, 5, 12, 15 working on stubs; reservation number | `GET /api/meta` real; build → get → undo → confirm → lookup work end-to-end on the stub package |
+| **M-2** (h 3–5) | ✅ All rule checks with pass + fail tests; real `build()` / `rebuild()` (city rule, M8, G3, G4); 65 tests green | Timeline, export, confirm transaction, city-plans; `tests/api` for packages + reservations | **Real** Menon package builds, exports, validates (`[]`) and confirms |
+| **M-3** (h 5–7) | ✅ `OVER_BUDGET` / `NO_PACKAGE` with reasons (done in M-2); `options()`; `apply_change()` + `ChangeError` | Options + PATCH endpoints, `409 RULE_VIOLATION`, `409 VERSION_CONFLICT`; `tests/api` for changes | Change hotel, flight, attraction; a bad change is refused; tiny budget gives M8 |
+| **M-4** (h 7–9) | ✅ G4 `mode="three"` and `rebuild()` (done in M-2), parser + `POST /api/parse`, fast vs brute oracle; 103 tests green | Rebuild endpoint, S2 inventory in confirm, `start.sh` | All 15 endpoints real; full test suite green |
 
 After M-2 the frontend can start against the real API.
 
@@ -176,7 +203,7 @@ After M-2 the frontend can start against the real API.
 
 **Person B (API + DB)**
 
-1. Build each endpoint against the stubs first; test it with `httpx` in `tests/api` and by hand in `/docs`.
+1. All engine functions are real (no stubs left), so every endpoint returns real packages from the start. Test each one with `httpx` in `tests/api` and by hand in `/docs`.
 2. Every path that returns or stores a package calls `validate()` first.
 3. Every write takes `base_version`; a stale one gets `409 VERSION_CONFLICT`.
 4. Business outcomes (`OVER_BUDGET`, `NO_PACKAGE`) return `200` with `outcome`; bad input returns `422`.
