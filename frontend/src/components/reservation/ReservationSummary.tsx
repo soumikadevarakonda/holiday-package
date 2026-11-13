@@ -11,8 +11,8 @@ export const ReservationSummary: React.FC<ReservationSummaryProps> = ({ reservat
   const [copied, setCopied] = useState(false);
   const snapshot = reservation.snapshot || {};
   const items: PackageItem[] = reservation.items || snapshot.items || [];
-  const travelers = snapshot.travelers || { adults: 2, children: 1 };
-  const cities = snapshot.cities || ['Tokyo', 'Kyoto'];
+  const travelers = snapshot.travelers || { adults: 0, children: 0, child_ages: [] };
+  const cities = snapshot.cities || [];
   const country = snapshot.country || 'Destination';
   const startDateStr = formatDate(snapshot.start_date);
   const endDateStr = formatDate(snapshot.end_date);
@@ -175,7 +175,7 @@ export const ReservationSummary: React.FC<ReservationSummaryProps> = ({ reservat
                             Child Travelers
                           </div>
                           <div className="font-body-sm text-body-sm text-on-surface-variant">
-                            {travelers.children} Child ({travelers.child_ages?.join(', ') || 'Age 7'})
+                            {travelers.children} Child ({travelers.child_ages?.length ? `age ${travelers.child_ages.join(', ')}` : ''})
                           </div>
                         </div>
                         <span className="material-symbols-outlined text-primary text-[18px]">check</span>
