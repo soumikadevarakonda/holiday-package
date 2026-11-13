@@ -6,22 +6,14 @@ interface PriceDiffProps {
   className?: string;
 }
 
+/** "+ ₹1,344", "− ₹2,000" or "No change in price". */
 export const PriceDiff: React.FC<PriceDiffProps> = ({ diff, className = '' }) => {
-  if (diff === null || diff === undefined || diff === 0) {
-    return (
-      <span className={`font-currency-md text-currency-md font-bold text-on-surface ${className}`}>
-        Included
-      </span>
-    );
-  }
-
-  const isUpgrade = diff > 0;
-  const colorClass = isUpgrade ? 'text-primary' : 'text-tertiary';
-  const prefix = isUpgrade ? '+ ' : '- ';
-
+  if (!diff) return <span className={`text-sm font-semibold text-ink-soft ${className}`}>No change in price</span>;
+  const up = diff > 0;
   return (
-    <span className={`font-currency-md text-currency-md font-bold ${colorClass} ${className}`}>
-      {prefix}{formatINR(Math.abs(diff))}
+    <span className={`text-lg font-bold tabular-nums ${up ? 'text-ink' : 'text-ok'} ${className}`}>
+      {up ? '+ ' : '− '}
+      {formatINR(Math.abs(diff))}
     </span>
   );
 };
