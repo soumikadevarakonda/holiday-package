@@ -1,0 +1,46 @@
+[
+  {"id": "menon", "note": "Demo request: 6 nights -> city rule picks 2 cities",
+   "request": {"departure_city": "Bengaluru", "country": "Japan", "start_date": "2027-04-10", "nights": 6,
+               "adults": 2, "children_ages": [6], "budget_inr": 350000, "traveler_name": "Menon family"},
+   "expect": {"outcome": "PACKAGE", "cities": 2}},
+
+  {"id": "uae_bom", "note": "Other country and departure city; 5 nights -> 1 city",
+   "request": {"departure_city": "Mumbai", "country": "United Arab Emirates", "start_date": "2027-04-05",
+               "nights": 5, "adults": 2, "children_ages": [], "budget_inr": 200000},
+   "expect": {"outcome": "PACKAGE", "cities": 1}},
+
+  {"id": "del_japan", "note": "DEL -> Japan lands only in HND on 10 Apr, so the first city is Tokyo",
+   "request": {"departure_city": "Delhi", "country": "Japan", "start_date": "2027-04-10", "nights": 5,
+               "adults": 2, "children_ages": [], "budget_inr": 400000},
+   "expect": {"outcome": "PACKAGE", "first_city": "Tokyo"}},
+
+  {"id": "one_adult_three_children", "note": "H3 forces k = 1 (adults >= k): FAMILY rooms only",
+   "request": {"departure_city": "Bengaluru", "country": "Japan", "start_date": "2027-04-03", "nights": 7,
+               "adults": 1, "children_ages": [4, 7, 10], "budget_inr": 500000},
+   "expect": {"outcome": "PACKAGE", "rooms_per_hotel": 1}},
+
+  {"id": "japan_10_nights", "note": "Largest search: 135 city plans",
+   "request": {"departure_city": "Bengaluru", "country": "Japan", "start_date": "2027-04-02", "nights": 10,
+               "adults": 2, "children_ages": [], "budget_inr": 900000},
+   "expect": {"outcome": "PACKAGE", "cities": 3, "plans": 135}},
+
+  {"id": "return_after_window", "note": "Start 18 Apr + 3 nights returns 21 Apr, after the last flight date",
+   "request": {"departure_city": "Bengaluru", "country": "Japan", "start_date": "2027-04-18", "nights": 3,
+               "adults": 2, "children_ages": [], "budget_inr": 300000},
+   "expect": {"outcome": "NO_PACKAGE", "reason_contains": "21 Apr 2027"}},
+
+  {"id": "ten_travelers", "note": "No flight has more than 9 seats left",
+   "request": {"departure_city": "Bengaluru", "country": "Japan", "start_date": "2027-04-10", "nights": 6,
+               "adults": 6, "children_ages": [1, 2, 3, 4], "budget_inr": 900000},
+   "expect": {"outcome": "NO_PACKAGE", "reason_contains": "9 seats"}},
+
+  {"id": "eight_travelers_full_flights", "note": "Every MAA return flight on that day has fewer than 8 seats",
+   "request": {"departure_city": "Chennai", "country": "United Arab Emirates", "start_date": "2027-04-08",
+               "nights": 4, "adults": 4, "children_ages": [3, 5, 8, 12], "budget_inr": 600000},
+   "expect": {"outcome": "NO_PACKAGE", "reason_contains": "8 seats"}},
+
+  {"id": "tiny_budget", "note": "M8: valid packages exist but none fits",
+   "request": {"departure_city": "Bengaluru", "country": "Japan", "start_date": "2027-04-10", "nights": 6,
+               "adults": 2, "children_ages": [6], "budget_inr": 50000},
+   "expect": {"outcome": "OVER_BUDGET"}}
+]
