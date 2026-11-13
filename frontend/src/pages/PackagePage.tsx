@@ -31,6 +31,7 @@ export const PackagePage: React.FC = () => {
     sideEffects,
     applyChange,
     rebuild,
+    undo,
   } = usePackage(id);
 
   // Change modal state
@@ -53,7 +54,9 @@ export const PackagePage: React.FC = () => {
     setModalKind('hotel');
     setModalItem(item);
     setModalTitle(`Alternative Hotels for ${item.city || 'Stay'}`);
-    setModalSubtitle(`${item.nights || 4} Nights • Verified Room Allocations`);
+    setModalSubtitle(
+      `${item.nights ? `${item.nights} nights` : 'Your stay'} • price difference is for the whole stay`
+    );
     setIsModalOpen(true);
     try {
       setModalLoading(true);
@@ -69,12 +72,13 @@ export const PackagePage: React.FC = () => {
   // Handle open Change Flight
   const handleChangeFlight = async (item: PackageItem) => {
     if (!id) return;
-    const isArrival = item.start ? true : false;
-    const leg = isArrival ? 'arrival' : 'return';
+    const flights = (packageRes?.items || []).filter((it) => it.type === 'flight');
+    const leg: 'arrival' | 'return' =
+      item.leg || (flights[0]?.item_id === item.item_id ? 'arrival' : 'return');
     setModalKind('flight');
     setModalItem(item);
     setModalTitle(`Alternative Flights (${leg === 'arrival' ? 'Outbound' : 'Inbound'})`);
-    setModalSubtitle('Direct & 1-stop scheduled departures');
+    setModalSubtitle('Same date and airports • transfers are re-timed automatically');
     setIsModalOpen(true);
     try {
       setModalLoading(true);
@@ -91,7 +95,7 @@ export const PackagePage: React.FC = () => {
   const handleAddAttraction = async (day: TimelineDay) => {
     if (!id) return;
     setActiveDayDate(day.date);
-    const dayCity = packageRes?.package_data?.cities?.[0] || 'Tokyo';
+    const dayCity = day.city || packageRes?.package_data?.cities?.[0] || '';
     setModalKind('attraction');
     setModalItem(null);
     setModalTitle(`Add Experience to Day ${day.day_number}`);
@@ -99,7 +103,7 @@ export const PackagePage: React.FC = () => {
     setIsModalOpen(true);
     try {
       setModalLoading(true);
-      const res = await getAttractionOptions(id, day.date?.slice(0, 10), dayCity);
+      const res = await getAttractionOptions(id, day.date?.slice(0, 10));
       setModalOptions(res.options || []);
     } catch (err: any) {
       setActionError(err.message || 'Failed to fetch attraction options');
@@ -123,10 +127,10 @@ export const PackagePage: React.FC = () => {
     try {
       setActionError(null);
       await applyChange({
-        kind: 'attraction',
+        kind: 'remove_attraction',
         current_item_id: item.item_id,
         new_catalog_id: '',
-        params: { action: 'remove', item_id: item.item_id },
+        params: {},
       });
     } catch (err: any) {
       setActionError(err.message || 'Failed to remove attraction');
@@ -156,16 +160,16 @@ export const PackagePage: React.FC = () => {
           current_item_id: modalItem?.item_id,
           new_catalog_id: option.catalog_id,
           params: {
-            leg: 'arrival',
+            leg: modalItem?.leg || 'arrival',
           },
         });
       } else if (modalKind === 'attraction') {
         await applyChange({
-          kind: 'attraction',
+          kind: 'add_attraction',
           new_catalog_id: option.catalog_id,
           params: {
-            action: 'add',
             date: activeDayDate,
+            start: option.start,
           },
         });
       }
@@ -189,8 +193,7 @@ export const PackagePage: React.FC = () => {
       setActionError(null);
       const res = await confirmPackage(id, {
         base_version: packageRes?.version_no ?? packageRes?.version,
-        customer_name: 'Rajesh Sharma',
-        customer_email: 'rajesh.sharma@example.com',
+        customer_name: packageRes?.package_data?.traveler_name || undefined,
       });
       const ref = res.reference || res.reservation_reference;
       if (ref) {
@@ -235,9 +238,19 @@ export const PackagePage: React.FC = () => {
     packageRes.package_data || packageRes.package || {};
   const items = packageRes.items || pkgData.items || [];
   const timeline = packageRes.timeline || [];
-  const cities = pkgData.cities || ['Tokyo', 'Kyoto'];
-  const travelerCount =
-    (pkgData.travelers?.adults || 2) + (pkgData.travelers?.children || 1);
+  const cities = pkgData.cities || [];
+  const travelerCount = (pkgData.travelers?.adults || 0) + (pkgData.travelers?.children || 0) || 1;
+  const isBooked = packageRes.status === 'BOOKED';
+  const version = packageRes.version_no ?? packageRes.version ?? 1;
+
+  const handleUndo = async () => {
+    try {
+      setActionError(null);
+      await undo();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to undo');
+    }
+  };
 
   return (
     <div className="w-full flex flex-col">
@@ -261,6 +274,31 @@ export const PackagePage: React.FC = () => {
           </div>
         )}
 
+        {(isBooked || version > 1 || packageRes.status === 'OVER_BUDGET') && (
+          <div className="mb-space-md flex flex-wrap items-center justify-between gap-space-sm p-space-sm rounded-lg bg-surface-container-low font-body-sm text-body-sm">
+            <span className="text-on-surface-variant">
+              {isBooked
+                ? 'This holiday is confirmed. It can no longer be changed — use Confirm Holiday again to see the booking.'
+                : packageRes.status === 'OVER_BUDGET'
+                ? `This is the cheapest possible package and it is over your budget by ${
+                    pkgData.totals?.budget_over?.toLocaleString('en-IN') ?? ''
+                  } INR. You can still change or confirm it.`
+                : `Version ${version} — every change is saved as a new version.`}
+            </span>
+            {!isBooked && version > 1 && (
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={actionLoading}
+                className="flex items-center gap-1 px-space-sm py-1 rounded bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">undo</span>
+                Undo last change
+              </button>
+            )}
+          </div>
+        )}
+
         {(sideEffects.length > 0 || warnings.length > 0) && (
           <div className="mb-space-md">
             <SideEffectsAlert sideEffects={sideEffects} warnings={warnings} />
@@ -271,10 +309,19 @@ export const PackagePage: React.FC = () => {
           {/* LEFT STREAM: Chronological Itinerary Builder (70% - lg:col-span-8) */}
           <div className="lg:col-span-8 flex flex-col gap-space-lg">
             {/* Alternative City Plans (G3) */}
-            {packageRes.city_plans && packageRes.city_plans.length > 1 && (
+            {!isBooked && packageRes.city_plans && packageRes.city_plans.length > 1 && (
               <CityPlanPicker
                 cityPlans={packageRes.city_plans}
-                onSelectPlan={(plan) => rebuild(plan)}
+                currentCities={cities}
+                currentNights={pkgData.nights_per_city}
+                onSelectPlan={async (plan) => {
+                  try {
+                    setActionError(null);
+                    await rebuild(plan);
+                  } catch (err: any) {
+                    setActionError(err.message || 'Failed to rebuild on that city plan');
+                  }
+                }}
                 loading={actionLoading}
               />
             )}
@@ -287,6 +334,7 @@ export const PackagePage: React.FC = () => {
               onChangeClick={handleChangeClick}
               onRemoveClick={handleRemoveAttraction}
               onAddAttractionClick={handleAddAttraction}
+              readOnly={isBooked || actionLoading}
             />
           </div>
 
