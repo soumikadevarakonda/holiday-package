@@ -15,6 +15,7 @@ export const QuickRequestBox: React.FC<QuickRequestBoxProps> = ({
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const handleParse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,11 +23,22 @@ export const QuickRequestBox: React.FC<QuickRequestBoxProps> = ({
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
       const res = await parseQuickRequest(text);
-      if (res.parsed) {
-        onParsed(res.parsed);
-        setOpen(false);
+      const found = Object.keys(res.parsed).length;
+      if (found === 0) {
+        setError('Could not understand that. Try: "2 adults 1 kid age 6 Bengaluru to Japan 10 Apr 6 nights 3.5 lakh".');
+        return;
       }
+      onParsed(res.parsed);
+      const notes = [
+        res.missing_fields.length
+          ? `Filled what I could — please check: ${res.missing_fields.join(', ').replace(/_/g, ' ')}.`
+          : 'Form filled — check it and press build.',
+        res.unparsed.length ? `Ignored: ${res.unparsed.join(', ')}.` : '',
+        ...res.warnings,
+      ].filter(Boolean);
+      setNotice(notes.join(' '));
     } catch (err: any) {
       setError(err.message || 'Failed to parse natural language request');
     } finally {
@@ -45,21 +57,21 @@ export const QuickRequestBox: React.FC<QuickRequestBoxProps> = ({
           onClick={() => onApplyPreset('golden')}
           className="px-space-sm py-1 rounded bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors shadow-sm"
         >
-          Japan Golden Route (8N)
+          Mumbai → Japan (8N)
         </button>
         <button
           type="button"
           onClick={() => onApplyPreset('hokkaido')}
           className="px-space-sm py-1 rounded bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors shadow-sm"
         >
-          Hokkaido Winter (7N)
+          Delhi → Japan (7N)
         </button>
         <button
           type="button"
           onClick={() => onApplyPreset('kansai')}
           className="px-space-sm py-1 rounded bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors shadow-sm"
         >
-          Tokyo &amp; Osaka (6N)
+          Bengaluru → Japan (6N)
         </button>
         <button
           type="button"
@@ -84,7 +96,7 @@ export const QuickRequestBox: React.FC<QuickRequestBoxProps> = ({
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="e.g. 2 adults 1 child age 7 to Japan from Mumbai 12 Apr 2027 8 nights budget 450000"
+              placeholder="e.g. 2 adults 1 kid age 6 Bengaluru to Japan 10 Apr 6 nights 3.5 lakh"
               className="w-full h-10 pl-9 pr-3 bg-surface-container-lowest text-on-surface rounded font-body-sm text-body-sm focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -96,6 +108,7 @@ export const QuickRequestBox: React.FC<QuickRequestBoxProps> = ({
             {loading ? 'Parsing...' : 'Fill Form'}
           </button>
           {error && <span className="text-error font-body-sm text-body-sm">{error}</span>}
+          {notice && !error && <span className="text-on-surface-variant font-body-sm text-body-sm">{notice}</span>}
         </form>
       )}
     </div>
