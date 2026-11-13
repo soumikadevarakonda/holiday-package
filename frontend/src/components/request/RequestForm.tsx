@@ -406,19 +406,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
               {/* Route Splitting Pill Block */}
               <div className="flex-1 flex items-center gap-space-xs bg-surface-container-low px-space-md py-2 rounded-lg overflow-x-auto">
-                <span className="font-label-sm text-label-sm text-on-surface-variant uppercase whitespace-nowrap">
-                  Estimated Split:
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-md text-label-md shadow-sm whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                  {(destinationCountry || '').toLowerCase().includes('uae') ? 'Dubai' : 'Tokyo'} (
-                  {Math.ceil(nights / 2)}N)
-                </span>
-                <span className="text-outline-variant font-label-sm">+</span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-md text-label-md shadow-sm whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  {(destinationCountry || '').toLowerCase().includes('uae') ? 'Abu Dhabi' : 'Kyoto'} (
-                  {Math.floor(nights / 2)}N)
+                <span className="font-label-sm text-label-sm text-on-surface-variant whitespace-nowrap">
+                  {nights >= 6
+                    ? `Up to ${Math.max(1, Math.floor(nights / 3))} cities — the planner picks the cheapest split`
+                    : 'One city — short trips stay in one place'}
                 </span>
               </div>
             </div>
