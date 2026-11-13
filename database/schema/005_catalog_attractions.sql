@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS attraction (
     aliases          JSON          NOT NULL,
     visit_minutes    INT           NOT NULL,
     child_friendly   BOOLEAN       NOT NULL,
-    accessible       BOOLEAN       NOT NULL,
+    `accessible`     BOOLEAN       NOT NULL,    -- ACCESSIBLE is a reserved word in MySQL: always quote it
     price_per_person INT           NOT NULL,    -- whole INR; 0 = free
     child_price      INT           NULL,        -- NULL = children pay price_per_person; 0 = free for children
     image            VARCHAR(255)  NULL,
