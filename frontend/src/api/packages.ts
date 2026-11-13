@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeCityPlan, normalizeOption, normalizePackageResponse } from './normalize';
 import type {
   TripRequest,
   PackageResponse,
@@ -8,84 +9,58 @@ import type {
   CityPlan,
 } from './types';
 
+const pkgUrl = (id: string) => `/api/packages/${encodeURIComponent(id)}`;
+
 export async function createPackage(payload: TripRequest): Promise<PackageResponse> {
-  return apiClient<PackageResponse>('/api/packages', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  const raw = await apiClient<any>('/api/packages', { method: 'POST', body: JSON.stringify(payload) });
+  return normalizePackageResponse(raw);
 }
 
 export async function getPackage(packageId: string): Promise<PackageResponse> {
-  return apiClient<PackageResponse>(`/api/packages/${encodeURIComponent(packageId)}`);
+  return normalizePackageResponse(await apiClient<any>(pkgUrl(packageId)));
 }
 
-export async function getHotelOptions(
-  packageId: string,
-  city?: string
-): Promise<{ options: ChangeOption[] }> {
-  const query = city ? `?city=${encodeURIComponent(city)}` : '';
-  return apiClient<{ options: ChangeOption[] }>(
-    `/api/packages/${encodeURIComponent(packageId)}/options/hotel${query}`
-  );
+async function options(packageId: string, kind: string, params: Record<string, string | undefined>) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => v && qs.set(k, v));
+  const raw = await apiClient<any>(`${pkgUrl(packageId)}/options/${kind}${qs.toString() ? `?${qs}` : ''}`);
+  return { options: (raw.options || []).map(normalizeOption) as ChangeOption[] };
 }
 
-export async function getFlightOptions(
-  packageId: string,
-  leg: 'arrival' | 'return'
-): Promise<{ options: ChangeOption[] }> {
-  return apiClient<{ options: ChangeOption[] }>(
-    `/api/packages/${encodeURIComponent(packageId)}/options/flight?leg=${encodeURIComponent(leg)}`
-  );
+export function getHotelOptions(packageId: string, city?: string) {
+  return options(packageId, 'hotel', { city });
 }
 
-export async function getAttractionOptions(
-  packageId: string,
-  date?: string,
-  city?: string
-): Promise<{ options: ChangeOption[] }> {
-  const params = new URLSearchParams();
-  if (date) params.set('date', date);
-  if (city) params.set('city', city);
-  const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiClient<{ options: ChangeOption[] }>(
-    `/api/packages/${encodeURIComponent(packageId)}/options/attraction${qs}`
-  );
+export function getFlightOptions(packageId: string, leg: 'arrival' | 'return') {
+  return options(packageId, 'flight', { leg });
 }
 
-export async function applyChange(
-  packageId: string,
-  payload: ComponentChangeRequest
-): Promise<ChangeResponse> {
-  return apiClient<ChangeResponse>(`/api/packages/${encodeURIComponent(packageId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
+export function getAttractionOptions(packageId: string, date?: string, city?: string) {
+  return options(packageId, 'attraction', { date, city });
+}
+
+export async function applyChange(packageId: string, payload: ComponentChangeRequest): Promise<ChangeResponse> {
+  return apiClient<ChangeResponse>(pkgUrl(packageId), { method: 'PATCH', body: JSON.stringify(payload) });
 }
 
 export async function undoPackage(packageId: string): Promise<PackageResponse> {
-  return apiClient<PackageResponse>(`/api/packages/${encodeURIComponent(packageId)}/undo`, {
-    method: 'POST',
-  });
+  const raw = await apiClient<any>(`${pkgUrl(packageId)}/undo`, { method: 'POST' });
+  return normalizePackageResponse(raw.package || raw);
 }
 
-export async function getCityPlans(
-  packageId: string
-): Promise<{ package_id: string; city_plans: CityPlan[] }> {
-  return apiClient<{ package_id: string; city_plans: CityPlan[] }>(
-    `/api/packages/${encodeURIComponent(packageId)}/city-plans`
-  );
+export async function getCityPlans(packageId: string): Promise<{ package_id: string; city_plans: CityPlan[] }> {
+  const raw = await apiClient<any>(`${pkgUrl(packageId)}/city-plans`);
+  return { package_id: raw.package_id, city_plans: (raw.city_plans || []).map(normalizeCityPlan) };
 }
 
-export async function rebuildPackage(
-  packageId: string,
-  cityPlan: CityPlan
-): Promise<PackageResponse> {
-  return apiClient<PackageResponse>(`/api/packages/${encodeURIComponent(packageId)}/rebuild`, {
+export async function rebuildPackage(packageId: string, cityPlan: CityPlan, baseVersion?: number): Promise<PackageResponse> {
+  const raw = await apiClient<any>(`${pkgUrl(packageId)}/rebuild`, {
     method: 'POST',
-    body: JSON.stringify({ city_plan: cityPlan }),
+    body: JSON.stringify({ city_plan: cityPlan.plan, base_version: baseVersion }),
   });
+  return normalizePackageResponse(raw);
 }
 
 export function getExportPackageUrl(packageId: string): string {
-  return `/api/packages/${encodeURIComponent(packageId)}/export`;
+  return `${pkgUrl(packageId)}/export`;
 }
