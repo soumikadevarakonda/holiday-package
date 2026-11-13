@@ -16,7 +16,7 @@ import {
   getAttractionOptions,
   getExportPackageUrl,
 } from '../api/packages';
-import type { PackageItem, ChangeOption, TimelineDay } from '../api/types';
+import type { PackageItem, ChangeOption, TimelineDay, PackageData } from '../api/types';
 
 export const PackagePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -231,7 +231,8 @@ export const PackagePage: React.FC = () => {
     );
   }
 
-  const pkgData = packageRes.package_data || packageRes.package || {};
+  const pkgData: Partial<PackageData> =
+    packageRes.package_data || packageRes.package || {};
   const items = packageRes.items || pkgData.items || [];
   const timeline = packageRes.timeline || [];
   const cities = pkgData.cities || ['Tokyo', 'Kyoto'];
