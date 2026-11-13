@@ -1,6 +1,13 @@
 import React from 'react';
 import { Photo } from '../common/Photo';
-import { formatINR } from '../../utils/format';
+import { formatDate, formatINR } from '../../utils/format';
+
+function formatDuration(minutes?: number): string {
+  if (!minutes) return '';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}h${m ? ` ${m}m` : ''}` : `${m}m`;
+}
 import type { PackageItem } from '../../api/types';
 
 interface ItemRowProps {
@@ -24,18 +31,21 @@ export const ItemRow: React.FC<ItemRowProps> = ({
   // Flight Card
   if (type === 'flight') {
     const flightNo = item.flight_number || item.catalog_id || 'Flight';
-    const airline = item.airline || (flightNo.startsWith('AI') ? 'Air India' : flightNo.startsWith('EK') ? 'Emirates' : 'Airline');
-    const fromAirport = item.from_airport || 'BOM (Mumbai)';
-    const toAirport = item.to_airport || 'NRT (Tokyo)';
-    const departureTime = item.start ? item.start.slice(11, 16) || '08:15' : '08:15';
-    const arrivalTime = item.end ? item.end.slice(11, 16) || '19:40' : '19:40';
+    const airline = item.airline || item.name || 'Flight';
+    const fromAirport = item.from_airport || '';
+    const toAirport = item.to_airport || '';
+    const departureTime = item.start ? item.start.slice(11, 16) : '';
+    const arrivalTime = item.end ? item.end.slice(11, 16) : '';
+    const depDate = item.start ? formatDate(item.start.slice(0, 10)) : '';
+    const arrDate = item.end ? formatDate(item.end.slice(0, 10)) : '';
+    const stopsLabel = item.stops ? `${item.stops} stop${item.stops > 1 ? 's' : ''}` : 'Non-stop';
 
     return (
       <div className="bg-surface-container-low rounded-lg p-space-md transition-all hover:shadow-md">
         <div className="flex flex-wrap items-center justify-between gap-space-xs mb-space-sm">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm font-semibold uppercase">
-              International Flight
+              {item.leg === 'return' ? 'Flight home' : 'Flight out'}
             </span>
             <span className="font-body-sm text-body-sm font-semibold text-on-surface">
               {airline} • {flightNo}
@@ -56,9 +66,10 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                 {departureTime}
               </div>
               <div className="font-body-sm text-body-sm text-on-surface-variant">{fromAirport}</div>
+              <div className="font-label-sm text-label-sm text-on-surface-variant">{depDate}</div>
             </div>
             <div className="flex flex-col items-center flex-1 px-space-xs">
-              <span className="font-label-sm text-label-sm text-on-surface-variant">Non-stop / Direct</span>
+              <span className="font-label-sm text-label-sm text-on-surface-variant">{stopsLabel}</span>
               <div className="w-full flex items-center gap-1 my-1">
                 <span className="w-2 h-2 rounded-full bg-primary"></span>
                 <div className="h-0.5 flex-1 bg-outline-variant"></div>
@@ -68,13 +79,16 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                 <div className="h-0.5 flex-1 bg-outline-variant"></div>
                 <span className="w-2 h-2 rounded-full bg-primary"></span>
               </div>
-              <span className="font-label-sm text-label-sm text-on-surface-variant">Scheduled Service</span>
+              <span className="font-label-sm text-label-sm text-on-surface-variant">
+                {formatDuration(item.duration_minutes)}
+              </span>
             </div>
             <div className="text-right">
               <div className="font-currency-md text-currency-md font-bold text-on-surface">
                 {arrivalTime}
               </div>
               <div className="font-body-sm text-body-sm text-on-surface-variant">{toAirport}</div>
+              <div className="font-label-sm text-label-sm text-on-surface-variant">{arrDate}</div>
             </div>
           </div>
 
@@ -84,11 +98,12 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                 <span className="material-symbols-outlined text-[16px] text-primary">
                   airline_seat_recline_normal
                 </span>
-                Standard Class Allocation
+                {item.quantity ?? 1} seat{(item.quantity ?? 1) > 1 ? 's' : ''}
+                {item.details?.cabin ? ` • ${String(item.details.cabin).toLowerCase()}` : ''}
               </span>
               <span className="flex items-center gap-1">
-                <span className="material-symbols-outlined text-[16px] text-primary">luggage</span>
-                Included Checked Baggage
+                <span className="material-symbols-outlined text-[16px] text-primary">schedule</span>
+                Times are local
               </span>
             </div>
             {!readOnly && onChangeClick && (
@@ -108,7 +123,7 @@ export const ItemRow: React.FC<ItemRowProps> = ({
 
   // Transfer Card
   if (type === 'transfer') {
-    const isIntercity = item.name?.toLowerCase().includes('shinkansen') || item.transfer_type === 'train';
+    const isIntercity = Boolean(item.intercity);
 
     if (isIntercity) {
       return (
@@ -134,14 +149,16 @@ export const ItemRow: React.FC<ItemRowProps> = ({
             <div className="md:col-span-8 flex items-center justify-between gap-space-md bg-surface-container-lowest p-space-sm rounded-lg">
               <div className="text-left">
                 <div className="font-currency-md text-currency-md font-bold text-on-surface">
-                  {item.start ? item.start.slice(11, 16) || '10:00' : '10:00'}
+                  {item.start ? item.start.slice(11, 16) : ''}
                 </div>
                 <div className="font-body-sm text-body-sm text-on-surface-variant">
-                  {item.from_location || 'Origin Hub'}
+                  {item.from_location || ''}
                 </div>
               </div>
               <div className="flex flex-col items-center flex-1 px-space-xs">
-                <span className="font-label-sm text-label-sm text-on-surface-variant">Express Transit</span>
+                <span className="font-label-sm text-label-sm text-on-surface-variant">
+                  {formatDuration(item.duration_minutes)}
+                </span>
                 <div className="w-full flex items-center gap-1 my-1">
                   <span className="w-2 h-2 rounded-full bg-secondary"></span>
                   <div className="h-0.5 flex-1 bg-outline-variant"></div>
@@ -149,14 +166,16 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                   <div className="h-0.5 flex-1 bg-outline-variant"></div>
                   <span className="w-2 h-2 rounded-full bg-secondary"></span>
                 </div>
-                <span className="font-label-sm text-label-sm text-primary font-medium">Reserved Corridor</span>
+                <span className="font-label-sm text-label-sm text-primary font-medium">
+                  {(item.transfer_type || '').replace(/_/g, ' ').toLowerCase()}
+                </span>
               </div>
               <div className="text-right">
                 <div className="font-currency-md text-currency-md font-bold text-on-surface">
-                  {item.end ? item.end.slice(11, 16) || '12:15' : '12:15'}
+                  {item.end ? item.end.slice(11, 16) : ''}
                 </div>
                 <div className="font-body-sm text-body-sm text-on-surface-variant">
-                  {item.to_location || 'Destination Hub'}
+                  {item.to_location || ''}
                 </div>
               </div>
             </div>
@@ -167,16 +186,9 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                   <span className="material-symbols-outlined text-[16px] text-primary">
                     confirmation_number
                   </span>
-                  Ordinary Car Reservation
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[16px] text-primary">luggage</span>
-                  Luggage space verified
+                  {item.quantity ?? 1} ticket{(item.quantity ?? 1) > 1 ? 's' : ''}
                 </span>
               </div>
-              <span className="font-label-sm text-label-sm text-primary bg-primary/10 px-2 py-1 rounded text-center font-medium">
-                Confirmed Corridor Schedule
-              </span>
             </div>
           </div>
         </div>
@@ -208,16 +220,20 @@ export const ItemRow: React.FC<ItemRowProps> = ({
             </div>
             <div>
               <div className="font-headline-sm text-headline-sm text-on-surface">
-                {item.vehicle_type || 'Private Executive Transfer (Luggage Optimized)'}
+                {item.from_location && item.to_location
+                  ? `${item.from_location} → ${item.to_location}`
+                  : item.name}
               </div>
               <div className="font-body-sm text-body-sm text-on-surface-variant">
-                Synchronized with flight arrival/departure window
+                {item.start ? `Pickup ${item.start.slice(11, 16)}` : ''}
+                {item.duration_minutes ? ` • about ${formatDuration(item.duration_minutes)}` : ''}
+                {item.quantity && item.quantity > 1 ? ` • ${item.quantity} vehicles/tickets` : ''}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-1 bg-surface-container-lowest text-primary rounded font-label-sm text-label-sm font-medium">
-              Confirmed Voucher
+              {(item.transfer_type || 'Transfer').replace(/_/g, ' ').toLowerCase()}
             </span>
           </div>
         </div>
@@ -228,7 +244,8 @@ export const ItemRow: React.FC<ItemRowProps> = ({
   // Hotel Card
   if (type === 'hotel') {
     const hotelName = item.hotel_name || item.name || 'Accommodating Stay';
-    const roomName = item.room_name || 'Standard / Deluxe Room';
+    const roomName = item.room_name || item.room_id || 'Room';
+    const roomCount = item.quantity ?? 1;
     const cityLabel = city || item.city || 'Destination';
 
     return (
@@ -255,14 +272,16 @@ export const ItemRow: React.FC<ItemRowProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-space-md items-center">
           <div className="md:col-span-4 h-32 rounded-lg overflow-hidden relative">
             <Photo
-              src={item.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuAgFNJ1fGswugrHCzIUNu2VcjUtzdd90aVmXwFGzP-Jp956Sw7Hk1kLe1GkvNXWViVcC3tUFxXhzO8BdkC3JKIrGilIcKBnAHO-UGRgWuP1PXp_JdoPZgoCTy7-oqT1AcfRsOpP2SmFRRTSoVNFLzg0D7pf7U3ymNt7z-BRJaW1ATMEocFr0aqVMx31hl-bCLVHNLNuUFMIpjl15jVMupf6jAyFs0Fmk6SWXgMj-9o'}
+              src={item.image}
               alt={hotelName}
               fallbackType="hotel"
               className="w-full h-full object-cover"
             />
-            <div className="absolute bottom-2 left-2 bg-on-surface/80 text-surface px-2 py-0.5 rounded font-label-sm text-label-sm backdrop-blur-sm">
-              ★ 4.5 / 5.0 High Rating
-            </div>
+            {item.rating != null && (
+              <div className="absolute bottom-2 left-2 bg-on-surface/80 text-surface px-2 py-0.5 rounded font-label-sm text-label-sm backdrop-blur-sm">
+                {item.stars ? `${item.stars}★ • ` : ''}Guest rating {item.rating}/10
+              </div>
+            )}
           </div>
 
           <div className="md:col-span-5 flex flex-col justify-between h-full">
@@ -271,19 +290,23 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                 {hotelName}
               </h3>
               <p className="font-body-sm text-body-sm text-on-surface-variant">
-                {cityLabel} Central Area • Close to transit hubs
+                {item.area ? `${item.area}, ${cityLabel}` : cityLabel}
+                {item.start && item.end ? ` • ${formatDate(item.start)} – ${formatDate(item.end)}` : ''}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
                 <span className="bg-surface-container-lowest px-2 py-0.5 rounded">
-                  {roomName}
+                  {roomCount > 1 ? `${roomCount} × ` : ''}{roomName}
                 </span>
-                <span className="bg-surface-container-lowest px-2 py-0.5 rounded">
-                  Daily Breakfast Included
-                </span>
+                {item.details?.refundable != null && (
+                  <span className="bg-surface-container-lowest px-2 py-0.5 rounded">
+                    {item.details.refundable ? 'Refundable' : 'Non-refundable'}
+                  </span>
+                )}
               </div>
             </div>
             <div className="font-body-sm text-body-sm text-on-surface-variant mt-2">
-              Check-in: 15:00 • Free High-Speed WiFi
+              {item.details?.check_in_from ? `Check-in from ${item.details.check_in_from}` : ''}
+              {item.details?.check_out_until ? ` • Check-out by ${item.details.check_out_until}` : ''}
             </div>
           </div>
 
@@ -297,9 +320,7 @@ export const ItemRow: React.FC<ItemRowProps> = ({
                 Change Hotel
               </button>
             )}
-            <span className="font-label-sm text-label-sm text-center text-on-surface-variant">
-              Verified room occupancy
-            </span>
+
           </div>
         </div>
       </div>
@@ -310,8 +331,13 @@ export const ItemRow: React.FC<ItemRowProps> = ({
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between p-space-md rounded-lg bg-surface-container-low transition-all hover:bg-surface-container-high/40 gap-space-md">
       <div className="flex items-start gap-space-md">
-        <div className="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center text-primary flex-shrink-0">
-          <span className="material-symbols-outlined text-[24px]">visibility</span>
+        <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+          <Photo
+            src={item.image}
+            alt={item.name || 'Attraction'}
+            fallbackType="attraction"
+            className="w-full h-full object-cover"
+          />
         </div>
         <div>
           <div className="flex items-center gap-2">
@@ -325,7 +351,14 @@ export const ItemRow: React.FC<ItemRowProps> = ({
             )}
           </div>
           <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
-            Confirmed e-Ticket passes • Fast-track entry included
+            {[
+              item.category ? item.category.replace(/_/g, ' ').toLowerCase() : null,
+              item.details?.visit_minutes ? `about ${formatDuration(item.details.visit_minutes)}` : null,
+              item.details?.open_from ? `open ${item.details.open_from}–${item.details.open_until}` : null,
+              price === 0 ? 'free entry' : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
           </p>
         </div>
       </div>
