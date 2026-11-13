@@ -1,15 +1,17 @@
-import React, { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { RequestForm } from '../components/request/RequestForm';
 import { QuickRequestBox } from '../components/request/QuickRequestBox';
 import { OverBudgetPanel } from '../components/outcome/OverBudgetPanel';
 import { NoPackagePanel } from '../components/outcome/NoPackagePanel';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { Photo } from '../components/common/Photo';
+import { AlternativesPicker } from '../components/package/AlternativesPicker';
 import { Icon } from '../components/common/Icon';
 import { useMeta } from '../hooks/useMeta';
 import { createPackage } from '../api/packages';
 import { ApiError } from '../api/client';
+import { loadLastResults, saveLastResults } from '../utils/lastResults';
 import type { TripRequest, PackageResponse } from '../api/types';
 
 interface Preset {
@@ -63,8 +65,27 @@ export const RequestPage: React.FC = () => {
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [outcome, setOutcome] = useState<PackageResponse | null>(null);
   const [initialValues, setInitialValues] = useState<Partial<TripRequest>>({});
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const scrollToResults = () =>
+    setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+
+  // "/?view=results" (from the trip page's back link or the browser Back button) brings the last results back
+  useEffect(() => {
+    if (searchParams.get('view') !== 'results') return;
+    const last = loadLastResults();
+    if (last) {
+      setOutcome(last.outcome);
+      setInitialValues({ ...last.request });
+      scrollToResults();
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fill = (values: Partial<TripRequest>) => {
+    if (searchParams.get('view')) setSearchParams({}, { replace: true });
     setInitialValues({ ...values });
     setOutcome(null);
     setError(null);
@@ -79,9 +100,24 @@ export const RequestPage: React.FC = () => {
       setServerErrors({});
       setOutcome(null);
       const res = await createPackage(payload);
-      if (res.outcome === 'OVER_BUDGET' || res.outcome === 'NO_PACKAGE') {
+      const hasThree = Object.keys(res.alternatives || {}).length > 0;
+      if (res.outcome === 'OVER_BUDGET' || res.outcome === 'NO_PACKAGE' || hasThree) {
         setOutcome(res);
-        setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+        // Remember these results (without the bulky itinerary) so the traveler can come back to them
+        saveLastResults({
+          request: payload,
+          outcome: {
+            ...res,
+            items: [],
+            timeline: [],
+            city_plans: [],
+            package: undefined,
+            cheapest_package: undefined,
+            package_data: { trip_id: '', items: [], budget_inr: res.package_data?.budget_inr ?? payload.budget },
+          },
+        });
+        setSearchParams({ view: 'results' }, { replace: true });
+        scrollToResults();
       } else {
         navigate(`/package/${res.package_id}`);
       }
@@ -136,6 +172,13 @@ export const RequestPage: React.FC = () => {
               suggestion={outcome.suggestion}
               onModifyRequest={() => fill(initialValues)}
               onAcceptCheapest={outcome.package_id ? () => navigate(`/package/${outcome.package_id}`) : undefined}
+            />
+          )}
+          {outcome && outcome.alternatives && Object.keys(outcome.alternatives).length > 0 && (
+            <AlternativesPicker
+              alternatives={outcome.alternatives}
+              budget={outcome.package_data?.budget_inr ?? outcome.package?.budget_inr}
+              onChoose={(pid) => navigate(`/package/${pid}`)}
             />
           )}
           {outcome?.outcome === 'NO_PACKAGE' && (
