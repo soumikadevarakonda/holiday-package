@@ -37,6 +37,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ meta, onSubmit, loadin
   const [budgetStr, setBudgetStr] = useState('3,50,000');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [travelersOpen, setTravelersOpen] = useState(false);
+  const [compare, setCompare] = useState(true);
   const travelersRef = useRef<HTMLDivElement>(null);
 
   // Options from /api/meta (with a fallback so the form works even before it loads)
@@ -118,7 +119,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ meta, onSubmit, loadin
       children,
       child_ages: childAges.slice(0, children),
       budget,
-      mode: 'default',
+      mode: compare ? 'three' : 'default',
     });
   };
 
@@ -267,7 +268,16 @@ export const RequestForm: React.FC<RequestFormProps> = ({ meta, onSubmit, loadin
       </div>
 
       {/* Helper line + errors */}
-      <div className="mt-3 text-sm text-white/90 flex flex-wrap gap-x-4 gap-y-1">
+      <label className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-white cursor-pointer">
+        <input
+          type="checkbox"
+          checked={compare}
+          onChange={(e) => setCompare(e.target.checked)}
+          className="w-4 h-4 accent-sun"
+        />
+        Compare 3 options: cheapest, fastest and best rated
+      </label>
+      <div className="mt-2 text-sm text-white/90 flex flex-wrap gap-x-4 gap-y-1">
         <span>
           <Icon name="event" className="!text-base mr-1" />
           Back on {returnDate || '—'}
