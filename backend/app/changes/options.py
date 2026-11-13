@@ -65,7 +65,8 @@ def _hotel_options(pkg: Package, city: str) -> list[Option]:
             label=f"{o.hotel.name} · {o.rooms} × {o.room.name}", price_inr=o.price,
             price_diff=0 if current else res.package.total_inr - pkg.total_inr,
             details={"current": current, "stars": o.hotel.stars, "rating": o.hotel.rating, "area": o.hotel.area,
-                     "rooms": o.rooms, "room_type": o.room.room_type, "image": o.hotel.image,
+                     "rooms": o.rooms, "room_type": o.room.room_type, "room_name": o.room.name,
+                     "refundable": o.room.refundable, "image": o.hotel.image,
                      "side_effects": [] if current else res.side_effects}))
     return sorted(out, key=lambda x: (x.price_diff, x.catalog_id, x.room_id))
 
