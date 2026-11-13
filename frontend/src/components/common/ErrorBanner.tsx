@@ -1,41 +1,53 @@
 import React from 'react';
+import { Icon } from './Icon';
+
+type Tone = 'error' | 'warning' | 'info' | 'success';
 
 interface ErrorBannerProps {
   title?: string;
-  message: string;
+  message: React.ReactNode;
   onDismiss?: () => void;
   className?: string;
+  tone?: Tone;
+  children?: React.ReactNode;
 }
 
+const TONES: Record<Tone, { box: string; icon: string; name: string }> = {
+  error: { box: 'bg-bad-light border-bad/30', icon: 'text-bad', name: 'error' },
+  warning: { box: 'bg-warn-light border-warn/30', icon: 'text-warn', name: 'warning' },
+  info: { box: 'bg-brand-light border-brand/30', icon: 'text-brand', name: 'info' },
+  success: { box: 'bg-ok-light border-ok/30', icon: 'text-ok', name: 'check_circle' },
+};
+
+/** Inline alert box, used for errors, notices and confirmations. */
 export const ErrorBanner: React.FC<ErrorBannerProps> = ({
-  title = 'Validation or System Alert',
+  title,
   message,
   onDismiss,
   className = '',
+  tone = 'error',
+  children,
 }) => {
+  const t = TONES[tone];
   return (
     <div
-      className={`bg-error-container/40 border border-error/30 text-on-error-container rounded-xl p-space-md flex items-start gap-space-sm ${className}`}
-      role="alert"
+      className={`border rounded-lg p-4 flex items-start gap-3 ${t.box} ${className}`}
+      role={tone === 'error' ? 'alert' : 'status'}
     >
-      <span className="material-symbols-outlined text-error text-[22px] shrink-0 mt-0.5">
-        error
-      </span>
-      <div className="flex-1">
-        <h4 className="font-headline-sm text-headline-sm text-error font-semibold">
-          {title}
-        </h4>
-        <p className="font-body-md text-body-md text-on-surface-variant mt-0.5">
-          {message}
-        </p>
+      <Icon name={t.name} filled className={`${t.icon} mt-0.5`} />
+      <div className="flex-1 min-w-0">
+        {title && <p className="font-semibold text-ink">{title}</p>}
+        <div className="text-sm text-ink-soft mt-0.5">{message}</div>
+        {children}
       </div>
       {onDismiss && (
         <button
+          type="button"
           onClick={onDismiss}
-          className="text-on-surface-variant hover:text-error transition-colors p-1"
-          aria-label="Dismiss alert"
+          className="text-ink-mute hover:text-ink p-1 -m-1 rounded"
+          aria-label="Dismiss"
         >
-          <span className="material-symbols-outlined text-[18px]">close</span>
+          <Icon name="close" />
         </button>
       )}
     </div>
