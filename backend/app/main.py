@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -63,6 +64,10 @@ def create_app() -> FastAPI:
     for router in (catalog_router, packages_router, changes_router, export_router,
                    reservations_router, parser_router):
         app.include_router(router)
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse(url="/docs")
 
     @app.get("/api/health", tags=["health"])
     def health() -> dict:

@@ -140,7 +140,8 @@ def _insert(conn: Connection, table: str, rows: list[dict]) -> None:
     if not rows:
         return
     cols = list(rows[0].keys())
-    sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})"
+    # Backticks: some column names are MySQL reserved words (e.g. `accessible`).
+    sql = f"INSERT INTO `{table}` ({', '.join(f'`{c}`' for c in cols)}) VALUES ({', '.join(':' + c for c in cols)})"
     conn.execute(text(sql), rows)
 
 
