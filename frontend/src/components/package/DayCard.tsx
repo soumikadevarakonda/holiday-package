@@ -29,16 +29,18 @@ export const DayCard: React.FC<DayCardProps> = ({
   const dayLabel = `DAY ${String(day.day_number).padStart(2, '0')}`;
   const dateStr = formatWeekdayDate(day.date);
 
-  // Generate appropriate day title if events present
-  let dayTitle = `Day ${day.day_number} Exploration`;
-  if (day.day_number === 1) {
-    dayTitle = `Arrival & ${city || 'Destination'} Base Camp`;
-  } else if (items.some((it) => it.type === 'flight')) {
-    dayTitle = `Departure & Return Journey`;
-  } else if (items.some((it) => it.name?.toLowerCase().includes('shinkansen') || it.type === 'transfer')) {
-    dayTitle = `Intercity Transit & Cultural Corridor`;
-  } else if (city) {
-    dayTitle = `Discovery & Curated Excursions in ${city}`;
+  // Day title from what actually happens that day
+  const flights = items.filter((it) => it.type === 'flight');
+  const intercity = items.find((it) => it.type === 'transfer' && it.intercity);
+  let dayTitle = city ? `Exploring ${city}` : `Day ${day.day_number}`;
+  if (flights.some((f) => f.leg === 'arrival')) {
+    dayTitle = `Arrival in ${city || 'your destination'}`;
+  } else if (flights.some((f) => f.leg === 'return')) {
+    dayTitle = 'Departure & flight home';
+  } else if (intercity) {
+    dayTitle = `Travel to ${city || 'the next city'}`;
+  } else if (items.length === 0) {
+    dayTitle = city ? `Free day in ${city}` : 'Free day';
   }
 
   return (
@@ -70,6 +72,11 @@ export const DayCard: React.FC<DayCardProps> = ({
 
       {/* Item Rows */}
       <div className="flex flex-col gap-space-md">
+        {items.length === 0 && (
+          <p className="font-body-sm text-body-sm text-on-surface-variant">
+            Nothing booked — time to explore on your own.
+          </p>
+        )}
         {items.map((item, idx) => (
           <ItemRow
             key={item.item_id || idx}
