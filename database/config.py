@@ -17,7 +17,11 @@ def find_project_root() -> Path:
     """Locate the project root directory containing .env or the catalog folder."""
     current = Path(__file__).resolve().parent
     for parent in [current, current.parent, current.parent.parent]:
-        if (parent / ".env").exists() or (parent / "hackathon-problem-1-holiday-package").exists():
+        if (
+            (parent / ".env").exists()
+            or (parent / "datasets").exists()
+            or (parent / "hackathon-problem-1-holiday-package").exists()
+        ):
             return parent
     return current.parent
 

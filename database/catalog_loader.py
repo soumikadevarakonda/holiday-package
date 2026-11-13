@@ -172,11 +172,11 @@ class CatalogLoader:
         current = Path(__file__).resolve().parent
         root = current.parent
         # Verify problem folder or catalog directory
-        if (root / "hackathon-problem-1-holiday-package").exists():
+        if (root / "datasets").exists() or (root / "hackathon-problem-1-holiday-package").exists():
             return root
         # Fallback to current working directory if relative structure changed
         cwd = Path.cwd()
-        if (cwd / "hackathon-problem-1-holiday-package").exists():
+        if (cwd / "datasets").exists() or (cwd / "hackathon-problem-1-holiday-package").exists():
             return cwd
         return root
 
@@ -186,7 +186,15 @@ class CatalogLoader:
         if custom_dir is not None:
             return Path(custom_dir)
         root = cls.get_project_root()
-        return root / "hackathon-problem-1-holiday-package" / "data" / "catalog"
+        for candidate in [
+            root / "datasets" / "data" / "catalog",
+            root / "datasets" / "catalog",
+            root / "datasets",
+            root / "hackathon-problem-1-holiday-package" / "data" / "catalog",
+        ]:
+            if candidate.is_dir() and (candidate / "airports.json").exists():
+                return candidate
+        return root / "datasets" / "data" / "catalog"
 
     @classmethod
     def load_file(cls, file_path: Path) -> Any:
