@@ -1,129 +1,114 @@
-import React, { useState, useEffect } from 'react';
-import { ChildAgesInput } from './ChildAgesInput';
-import { calculateReturnDate, formatINR } from '../../utils/format';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChildAgesInput, Stepper } from './ChildAgesInput';
+import { Icon } from '../common/Icon';
+import { calculateReturnDate } from '../../utils/format';
 import type { TripRequest, MetaResponse } from '../../api/types';
 
 interface RequestFormProps {
   meta: MetaResponse | null;
   onSubmit: (payload: TripRequest) => Promise<void>;
   loading: boolean;
-  onApplyPreset?: (preset: 'golden' | 'hokkaido' | 'kansai') => void;
   initialValues?: Partial<TripRequest>;
+  /** Field errors from the backend (422), keyed by field name. */
+  serverErrors?: Record<string, string>;
 }
 
-export const RequestForm: React.FC<RequestFormProps> = ({
-  meta,
-  onSubmit,
-  loading,
-  initialValues,
-}) => {
-  const [departureCity, setDepartureCity] = useState<string>('BOM');
-  const [destinationCountry, setDestinationCountry] = useState<string>('Japan');
-  const [startDate, setStartDate] = useState<string>('2027-04-05');
-  const [nights, setNights] = useState<number>(8);
-  const [adults, setAdults] = useState<number>(2);
-  const [children, setChildren] = useState<number>(1);
-  const [childAges, setChildAges] = useState<number[]>([7]);
-  const [budgetStr, setBudgetStr] = useState<string>('4,50,000');
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+const FALLBACK_FROM = [
+  { code: 'BLR', city: 'Bengaluru' },
+  { code: 'BOM', city: 'Mumbai' },
+  { code: 'DEL', city: 'Delhi' },
+  { code: 'MAA', city: 'Chennai' },
+];
+const FALLBACK_TO = [
+  { name: 'Japan', cities: ['Tokyo', 'Kyoto', 'Osaka'] },
+  { name: 'United Arab Emirates', cities: ['Dubai', 'Abu Dhabi'] },
+];
+const MAX_TRAVELERS = 9;
 
-  // Initialize or update from metadata or initialValues
+/** One-line search bar: from, to, dates, travelers, budget. */
+export const RequestForm: React.FC<RequestFormProps> = ({ meta, onSubmit, loading, initialValues, serverErrors = {} }) => {
+  const [departureCity, setDepartureCity] = useState('BLR');
+  const [destinationCountry, setDestinationCountry] = useState('Japan');
+  const [startDate, setStartDate] = useState('2027-04-10');
+  const [nights, setNights] = useState(6);
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
+  const [childAges, setChildAges] = useState<number[]>([]);
+  const [budgetStr, setBudgetStr] = useState('3,50,000');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [travelersOpen, setTravelersOpen] = useState(false);
+  const travelersRef = useRef<HTMLDivElement>(null);
+
+  // Options from /api/meta (with a fallback so the form works even before it loads)
+  const fromList = (meta?.departure_cities?.length ? meta.departure_cities : FALLBACK_FROM).map((c: any) =>
+    typeof c === 'string' ? { code: c, city: c } : { code: c.airport || c.code || c.city, city: c.city || c.name || c.code }
+  );
+  const toList = (meta?.destination_countries?.length ? meta.destination_countries : FALLBACK_TO).map((c: any) =>
+    typeof c === 'string' ? { name: c, cities: [] as string[] } : { name: c.name || c.country, cities: c.cities || [] }
+  );
+
   useEffect(() => {
-    if (meta?.departure_cities && meta.departure_cities.length > 0) {
-      const cityCodes = meta.departure_cities.map((c) =>
-        typeof c === 'string' ? c : c.airport || c.code || c.city || ''
+    const v = initialValues;
+    if (!v) return;
+    if (v.departure_city) {
+      const match = fromList.find(
+        (c) => c.code === v.departure_city || c.city.toLowerCase() === String(v.departure_city).toLowerCase()
       );
-      if (departureCity && !cityCodes.includes(departureCity)) {
-        if (cityCodes[0]) setDepartureCity(cityCodes[0]);
-      }
+      setDepartureCity(match ? match.code : v.departure_city);
     }
-  }, [meta]);
-
-  useEffect(() => {
-    if (initialValues) {
-      if (initialValues.departure_city) setDepartureCity(initialValues.departure_city);
-      if (initialValues.destination_country) setDestinationCountry(initialValues.destination_country);
-      if (initialValues.start_date) setStartDate(initialValues.start_date);
-      if (initialValues.nights !== undefined) setNights(initialValues.nights);
-      if (initialValues.adults !== undefined) setAdults(initialValues.adults);
-      if (initialValues.children !== undefined) setChildren(initialValues.children);
-      if (initialValues.child_ages) setChildAges(initialValues.child_ages);
-      if (initialValues.budget !== undefined) {
-        setBudgetStr(Math.round(initialValues.budget).toLocaleString('en-IN'));
-      }
+    if (v.destination_country) {
+      const d = String(v.destination_country).toLowerCase();
+      const match = toList.find((c) => c.name.toLowerCase() === d || (d === 'uae' && c.name.includes('Emirates')));
+      setDestinationCountry(match ? match.name : v.destination_country);
     }
+    if (v.start_date) setStartDate(v.start_date);
+    if (v.nights !== undefined) setNights(v.nights);
+    if (v.adults !== undefined) setAdults(v.adults);
+    if (v.child_ages) {
+      setChildAges(v.child_ages);
+      setChildren(v.child_ages.length);
+    } else if (v.children !== undefined) setChildren(v.children);
+    if (v.budget !== undefined) setBudgetStr(Math.round(v.budget).toLocaleString('en-IN'));
+    setErrors({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValues]);
 
-  const rawBudget = parseInt(budgetStr.replace(/[^0-9]/g, ''), 10) || 0;
+  // Close the travelers pop-over on outside click / Escape
+  useEffect(() => {
+    if (!travelersOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (travelersRef.current && !travelersRef.current.contains(e.target as Node)) setTravelersOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setTravelersOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [travelersOpen]);
 
-  // Budget adequacy gauge
-  const gaugePercent = Math.min(100, Math.max(15, (rawBudget / 650000) * 100));
-  let tierName = 'Comfort / 4-Star Tier';
-  let tierClass =
-    'px-2 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-label-sm text-label-sm uppercase font-semibold';
-  if (rawBudget < 320000) {
-    tierName = 'Economy / Compact Tier';
-    tierClass =
-      'px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm uppercase font-semibold';
-  } else if (rawBudget > 520000) {
-    tierName = 'Signature / 5-Star Luxury';
-    tierClass =
-      'px-2 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-label-sm text-label-sm uppercase font-semibold';
-  }
+  const budget = parseInt(budgetStr.replace(/[^0-9]/g, ''), 10) || 0;
+  const returnDate = calculateReturnDate(startDate, nights);
+  const cities = toList.find((c) => c.name === destinationCountry)?.cities || [];
 
-  const adjustNights = (delta: number) => {
-    const next = Math.max(3, Math.min(10, nights + delta));
-    setNights(next);
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!startDate || startDate < '2027-04-01' || startDate > '2027-04-17') e.start_date = 'Choose a date from 1 to 17 April 2027';
+    else {
+      const ret = new Date(startDate);
+      ret.setDate(ret.getDate() + nights);
+      if (ret > new Date('2027-04-20')) e.nights = 'You must be back by 20 April 2027 — choose fewer nights or an earlier date';
+    }
+    if (adults + children > MAX_TRAVELERS) e.travelers = `At most ${MAX_TRAVELERS} travelers`;
+    if (budget <= 0) e.budget = 'Enter your total budget';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const adjustAdults = (delta: number) => {
-    const next = Math.max(1, Math.min(8, adults + delta));
-    setAdults(next);
-  };
-
-  const handleBudgetChange = (val: string) => {
-    const digits = val.replace(/[^0-9]/g, '');
-    if (!digits) {
-      setBudgetStr('');
-      return;
-    }
-    const num = parseInt(digits, 10);
-    setBudgetStr(num.toLocaleString('en-IN'));
-  };
-
-  const setRecommendedBudget = () => {
-    setBudgetStr('4,50,000');
-  };
-
-  const validate = (): boolean => {
-    const errors: Record<string, string> = {};
-    if (!departureCity) errors.departure_city = 'Please select a departure city';
-    if (!destinationCountry) errors.destination_country = 'Please select a destination country';
-    if (!startDate) {
-      errors.start_date = 'Please select a start date';
-    } else {
-      if (startDate < '2027-04-01' || startDate > '2027-04-20') {
-        errors.start_date = 'Start date must be between 1 Apr 2027 and 20 Apr 2027';
-      }
-    }
-    if (nights < 3 || nights > 10) {
-      errors.nights = 'Duration must be between 3 and 10 nights';
-    }
-    if (adults < 1) errors.adults = 'At least 1 adult is required';
-    if (adults + children > 9) {
-      errors.adults = 'Max group size is 9 travelers';
-    }
-    if (rawBudget <= 0) {
-      errors.budget = 'Please enter a valid budget in INR';
-    }
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = (ev: React.FormEvent) => {
+    ev.preventDefault();
     if (!validate()) return;
-
     onSubmit({
       departure_city: departureCity,
       destination_country: destinationCountry,
@@ -132,491 +117,186 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       adults,
       children,
       child_ages: childAges.slice(0, children),
-      budget: rawBudget,
+      budget,
       mode: 'default',
     });
   };
 
-  const returnDateStr = calculateReturnDate(startDate, nights);
+  const allErrors = { ...serverErrors, ...errors };
+  const travelersLabel = `${adults} adult${adults > 1 ? 's' : ''}${
+    children ? ` · ${children} child${children > 1 ? 'ren' : ''}` : ''
+  }`;
 
-  // Available countries
-  const rawCountries = meta?.destination_countries;
-  const countryList: { code: string; name: string; label: string }[] =
-    Array.isArray(rawCountries) && rawCountries.length > 0
-      ? rawCountries
-          .map((c: any) => {
-            if (typeof c === 'string') {
-              const name = c.trim();
-              if (!name) return null;
-              const lower = name.toLowerCase();
-              const label = lower.includes('japan')
-                ? '🇯🇵 Japan (Tokyo, Kyoto, Osaka)'
-                : lower.includes('uae')
-                ? '🇦🇪 UAE (Dubai, Abu Dhabi)'
-                : name;
-              return { code: name, name, label };
-            }
-            if (c && typeof c === 'object') {
-              const name = String(c.name || c.country || '').trim();
-              if (!name) return null;
-              const code = String(c.code || name);
-              const lower = name.toLowerCase();
-              const label = lower.includes('japan')
-                ? '🇯🇵 Japan (Tokyo, Kyoto, Osaka)'
-                : lower.includes('uae')
-                ? '🇦🇪 UAE (Dubai, Abu Dhabi)'
-                : name;
-              return { code, name, label };
-            }
-            return null;
-          })
-          .filter((item): item is { code: string; name: string; label: string } => item !== null)
-      : [];
-
-  const safeCountryList = countryList.length > 0
-    ? countryList
-    : [
-        { code: 'Japan', name: 'Japan', label: '🇯🇵 Japan (Tokyo, Kyoto, Osaka)' },
-        { code: 'UAE', name: 'UAE', label: '🇦🇪 UAE (Dubai, Abu Dhabi)' },
-      ];
-
-  // Available departure cities
-  const rawDepartureCities = meta?.departure_cities;
-  const departureCityList: { code: string; label: string }[] =
-    Array.isArray(rawDepartureCities) && rawDepartureCities.length > 0
-      ? rawDepartureCities
-          .map((c: any) => {
-            if (typeof c === 'string') {
-              const code = c.trim();
-              if (!code) return null;
-              const label =
-                code === 'BOM'
-                  ? 'Mumbai (BOM) — Chhatrapati Shivaji Maharaj Intl'
-                  : code === 'DEL'
-                  ? 'New Delhi (DEL) — Indira Gandhi Intl'
-                  : code === 'BLR'
-                  ? 'Bengaluru (BLR) — Kempegowda Intl'
-                  : code === 'MAA'
-                  ? 'Chennai (MAA) — Chennai Intl'
-                  : `${code} Intl Airport`;
-              return { code, label };
-            }
-            if (c && typeof c === 'object') {
-              const code = String(c.airport || c.code || c.city || '').trim();
-              if (!code) return null;
-              const cityName = String(c.city || c.name || code).trim();
-              const label = `${cityName} (${code}) — ${
-                code === 'BOM'
-                  ? 'Chhatrapati Shivaji Maharaj'
-                  : code === 'DEL'
-                  ? 'Indira Gandhi'
-                  : code === 'BLR'
-                  ? 'Kempegowda'
-                  : code === 'MAA'
-                  ? 'Chennai'
-                  : cityName
-              } Intl`;
-              return { code, label };
-            }
-            return null;
-          })
-          .filter((item): item is { code: string; label: string } => item !== null)
-      : [];
-
-  const safeDepartureCityList = departureCityList.length > 0
-    ? departureCityList
-    : [
-        { code: 'BOM', label: 'Mumbai (BOM) — Chhatrapati Shivaji Maharaj Intl' },
-        { code: 'DEL', label: 'New Delhi (DEL) — Indira Gandhi Intl' },
-        { code: 'BLR', label: 'Bengaluru (BLR) — Kempegowda Intl' },
-        { code: 'MAA', label: 'Chennai (MAA) — Chennai Intl' },
-      ];
+  const field = 'flex items-center gap-2 bg-white rounded-md px-3 h-14 min-w-0';
+  const inputCls = 'w-full bg-transparent text-ink text-[15px] font-medium focus:outline-none';
+  const caption = 'block text-[11px] font-semibold uppercase tracking-wide text-ink-mute leading-none mb-1';
 
   return (
-    <div className="bg-surface-container-lowest rounded-xl shadow-md p-space-lg lg:p-space-xl relative overflow-hidden">
-      {/* Top Subtle Status Indicator */}
-      <div className="flex items-center justify-between pb-space-md mb-space-lg bg-surface-container-low/50 -mx-space-lg lg:-mx-space-xl -mt-space-lg lg:-mt-space-xl px-space-lg lg:px-space-xl py-space-sm">
-        <div className="flex items-center gap-space-sm">
-          <span className="material-symbols-outlined text-[18px] text-primary">tune</span>
-          <span className="font-headline-sm text-headline-sm text-on-surface">
-            Precision Parameter Configuration
+    <form onSubmit={submit} noValidate>
+      <div className="bg-sun p-1 rounded-lg shadow-pop grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.35fr_1.15fr_1.75fr_1fr_0.95fr_auto] gap-1">
+        {/* From */}
+        <label className={field}>
+          <Icon name="flight_takeoff" className="text-ink-mute" />
+          <span className="min-w-0 flex-1">
+            <span className={caption}>Leaving from</span>
+            <select value={departureCity} onChange={(e) => setDepartureCity(e.target.value)} className={inputCls}>
+              {fromList.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.city} ({c.code})
+                </option>
+              ))}
+            </select>
           </span>
-        </div>
-        <div className="flex items-center gap-space-xs font-label-sm text-label-sm text-primary">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-          <span>Zero Booking Fee Protocol</span>
-        </div>
-      </div>
+        </label>
 
-      <form className="space-y-space-lg" onSubmit={handleSubmit}>
-        {/* Row 1: Departure & Destination */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-          {/* Field 1: Departure City */}
-          <div className="flex flex-col gap-space-xs">
-            <label
-              className="flex items-center justify-between font-label-md text-label-md text-on-surface font-medium"
-              htmlFor="departureCity"
+        {/* To */}
+        <label className={field}>
+          <Icon name="location_on" className="text-ink-mute" />
+          <span className="min-w-0 flex-1">
+            <span className={caption}>Going to</span>
+            <select value={destinationCountry} onChange={(e) => setDestinationCountry(e.target.value)} className={inputCls}>
+              {toList.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </span>
+        </label>
+
+        {/* Dates */}
+        <div className={`${field} gap-3`}>
+          <Icon name="calendar_month" className="text-ink-mute" />
+          <label className="min-w-0 flex-1">
+            <span className={caption}>Start date</span>
+            <input
+              type="date"
+              min="2027-04-01"
+              max="2027-04-17"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className={inputCls}
+            />
+          </label>
+          <label className="w-16 shrink-0 border-l border-line pl-3">
+            <span className={caption}>Nights</span>
+            <select value={nights} onChange={(e) => setNights(Number(e.target.value))} className={inputCls}>
+              {Array.from({ length: 8 }, (_, i) => i + 3).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* Travelers */}
+        <div className="relative" ref={travelersRef}>
+          <button
+            type="button"
+            onClick={() => setTravelersOpen(!travelersOpen)}
+            className={`${field} w-full text-left`}
+            aria-expanded={travelersOpen}
+            aria-haspopup="dialog"
+          >
+            <Icon name="group" className="text-ink-mute" />
+            <span className="min-w-0 flex-1">
+              <span className={caption}>Travelers</span>
+              <span className="block truncate text-[15px] font-medium text-ink">{travelersLabel}</span>
+            </span>
+            <Icon name={travelersOpen ? 'expand_less' : 'expand_more'} className="text-ink-mute" />
+          </button>
+          {travelersOpen && (
+            <div
+              role="dialog"
+              aria-label="Travelers"
+              className="absolute z-30 mt-2 left-0 right-0 lg:left-auto lg:w-80 bg-white rounded-lg shadow-pop border border-line p-4"
             >
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-primary">
-                  flight_takeoff
-                </span>
-                Departure City
-              </span>
-              <span className="text-on-surface-variant font-label-sm text-label-sm">Primary Hub</span>
-            </label>
-            <div className="relative">
-              <select
-                id="departureCity"
-                value={departureCity}
-                onChange={(e) => setDepartureCity(e.target.value)}
-                className="w-full h-11 px-space-md bg-surface-container-low hover:bg-surface-container text-on-surface rounded-lg font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer appearance-none"
-              >
-                {safeDepartureCityList.map((city) => (
-                  <option key={city.code} value={city.code}>
-                    {city.label}
-                  </option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-2.5 pointer-events-none text-on-surface-variant text-[20px]">
-                expand_more
-              </span>
-            </div>
-            {fieldErrors.departure_city && (
-              <span className="text-error font-body-sm text-body-sm">{fieldErrors.departure_city}</span>
-            )}
-            <span className="font-body-sm text-body-sm text-on-surface-variant">
-              Non-stop &amp; 1-stop verified connections included
-            </span>
-          </div>
-
-          {/* Field 2: Destination Country */}
-          <div className="flex flex-col gap-space-xs">
-            <label
-              className="flex items-center justify-between font-label-md text-label-md text-on-surface font-medium"
-              htmlFor="destinationCountry"
-            >
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-primary">explore</span>
-                Destination Country
-              </span>
-              <span className="text-primary font-label-sm text-label-sm">Verified Corridor</span>
-            </label>
-            <div className="relative">
-              <select
-                id="destinationCountry"
-                value={destinationCountry}
-                onChange={(e) => setDestinationCountry(e.target.value)}
-                className="w-full h-11 pl-space-md pr-10 bg-surface-container-low hover:bg-surface-container text-on-surface rounded-lg font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer appearance-none"
-              >
-                {safeCountryList.map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-2.5 pointer-events-none text-on-surface-variant text-[20px]">
-                expand_more
-              </span>
-            </div>
-            {fieldErrors.destination_country && (
-              <span className="text-error font-body-sm text-body-sm">{fieldErrors.destination_country}</span>
-            )}
-            <span className="font-body-sm text-body-sm text-on-surface-variant">
-              Multi-city routing and intercity transit dynamically arranged
-            </span>
-          </div>
-        </div>
-
-        {/* Row 2: Dates & Duration */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-space-md">
-          {/* Field 3: Start Date */}
-          <div className="md:col-span-5 flex flex-col gap-space-xs">
-            <label
-              className="flex items-center justify-between font-label-md text-label-md text-on-surface font-medium"
-              htmlFor="holidayDate"
-            >
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-primary">
-                  calendar_today
-                </span>
-                Holiday Start Date
-              </span>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tertiary-fixed text-on-tertiary-fixed font-label-sm text-label-sm">
-                <span className="material-symbols-outlined text-[12px]">sunny</span>
-                1–20 Apr 2027 Season
-              </span>
-            </label>
-            <div className="relative">
-              <input
-                id="holidayDate"
-                type="date"
-                min="2027-04-01"
-                max="2027-04-20"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full h-11 px-space-md bg-surface-container-low text-on-surface rounded-lg font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer"
-              />
-            </div>
-            {fieldErrors.start_date && (
-              <span className="text-error font-body-sm text-body-sm">{fieldErrors.start_date}</span>
-            )}
-            <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
-              <span>Return: {returnDateStr || 'Calculating...'}</span>
-              <span className="text-primary font-medium">Optimal Transit Windows</span>
-            </div>
-          </div>
-
-          {/* Field 4: Number of Nights & Suggested Route */}
-          <div className="md:col-span-7 flex flex-col gap-space-xs">
-            <label className="flex items-center justify-between font-label-md text-label-md text-on-surface font-medium">
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-primary">hotel</span>
-                Duration &amp; City Split
-              </span>
-              <span className="font-currency-md text-currency-md text-primary">
-                {nights} Nights
-              </span>
-            </label>
-            <div className="flex items-center gap-space-sm">
-              <div className="flex items-center bg-surface-container-low rounded-lg p-1">
-                <button
-                  type="button"
-                  onClick={() => adjustNights(-1)}
-                  disabled={nights <= 3}
-                  className="w-9 h-9 rounded bg-surface-container-lowest hover:bg-surface-container text-on-surface flex items-center justify-center transition-colors shadow-sm disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-[18px]">remove</span>
-                </button>
-                <input
-                  type="text"
-                  readOnly
-                  value={nights}
-                  className="w-12 text-center bg-transparent font-currency-md text-currency-md text-on-surface focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => adjustNights(1)}
-                  disabled={nights >= 10}
-                  className="w-9 h-9 rounded bg-surface-container-lowest hover:bg-surface-container text-on-surface flex items-center justify-center transition-colors shadow-sm disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-[18px]">add</span>
-                </button>
-              </div>
-
-              {/* Route Splitting Pill Block */}
-              <div className="flex-1 flex items-center gap-space-xs bg-surface-container-low px-space-md py-2 rounded-lg overflow-x-auto">
-                <span className="font-label-sm text-label-sm text-on-surface-variant whitespace-nowrap">
-                  {nights >= 6
-                    ? `Up to ${Math.max(1, Math.floor(nights / 3))} cities — the planner picks the cheapest split`
-                    : 'One city — short trips stay in one place'}
-                </span>
-              </div>
-            </div>
-            {fieldErrors.nights && (
-              <span className="text-error font-body-sm text-body-sm">{fieldErrors.nights}</span>
-            )}
-            <span className="font-body-sm text-body-sm text-on-surface-variant">
-              Backend optimizes city allocation and transfers automatically
-            </span>
-          </div>
-        </div>
-
-        {/* Row 3: Party Composition (Adults & Dynamic Children) */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-space-md bg-surface-container-low/40 p-space-md rounded-xl">
-          {/* Field 5: Adults Stepper */}
-          <div className="md:col-span-4 flex flex-col gap-space-xs">
-            <label className="flex items-center justify-between font-label-md text-label-md text-on-surface font-medium">
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-primary">groups</span>
-                Adults (Age 12+)
-              </span>
-              <span className="text-on-surface-variant font-label-sm text-label-sm">
-                Standard Occupancy
-              </span>
-            </label>
-            <div className="flex items-center justify-between bg-surface-container-lowest rounded-lg p-1.5 shadow-sm">
-              <span className="font-headline-sm text-headline-sm text-on-surface pl-2">
-                {adults} {adults === 1 ? 'Adult' : 'Adults'}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => adjustAdults(-1)}
-                  disabled={adults <= 1}
-                  className="w-8 h-8 rounded bg-surface-container-low hover:bg-surface-container text-on-surface flex items-center justify-center transition-colors disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-[16px]">remove</span>
-                </button>
-                <span className="w-8 text-center font-currency-md text-currency-md text-on-surface">
-                  {adults}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => adjustAdults(1)}
-                  disabled={adults + children >= 9}
-                  className="w-8 h-8 rounded bg-surface-container-low hover:bg-surface-container text-on-surface flex items-center justify-center transition-colors disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-[16px]">add</span>
-                </button>
-              </div>
-            </div>
-            {fieldErrors.adults && (
-              <span className="text-error font-body-sm text-body-sm">{fieldErrors.adults}</span>
-            )}
-            <span className="font-body-sm text-body-sm text-on-surface-variant">
-              Room allocation adjusted for adult occupancy
-            </span>
-          </div>
-
-          {/* Field 6: Children with Age Verification Stepper */}
-          <ChildAgesInput
-            childrenCount={children}
-            childAges={childAges}
-            onChange={(count, ages) => {
-              setChildren(count);
-              setChildAges(ages);
-            }}
-            maxChildren={Math.max(0, 9 - adults)}
-          />
-        </div>
-
-        {/* Row 4: Budget in INR & Dynamic Adequacy Indicator */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-space-md">
-          {/* Field 7: Budget Input */}
-          <div className="md:col-span-6 flex flex-col gap-space-xs">
-            <div className="flex items-center justify-between">
-              <label
-                className="flex items-center gap-1.5 font-label-md text-label-md text-on-surface font-medium"
-                htmlFor="budgetInput"
-              >
-                <span className="material-symbols-outlined text-[18px] text-primary">payments</span>
-                Total Package Budget (INR)
-              </label>
-              <span className="font-label-sm text-label-sm text-on-surface-variant">
-                All-Inclusive (Flights + Hotels + Rail)
-              </span>
-            </div>
-            <div className="relative">
-              <span className="absolute left-3.5 top-2.5 font-currency-md text-currency-md text-primary font-bold">
-                ₹
-              </span>
-              <input
-                id="budgetInput"
-                type="text"
-                value={budgetStr}
-                onChange={(e) => handleBudgetChange(e.target.value)}
-                className="w-full h-11 pl-9 pr-28 bg-surface-container-low text-on-surface rounded-lg font-currency-md text-currency-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
+              <Stepper label="Adults" hint="Age 18+" value={adults} min={1} max={MAX_TRAVELERS - children} onChange={setAdults} />
+              <ChildAgesInput
+                childrenCount={children}
+                childAges={childAges}
+                maxChildren={MAX_TRAVELERS - adults}
+                onChange={(n, ages) => {
+                  setChildren(n);
+                  setChildAges(ages);
+                }}
               />
               <button
                 type="button"
-                onClick={setRecommendedBudget}
-                className="absolute right-2 top-1.5 px-2 py-1 rounded bg-surface-container-lowest text-primary hover:bg-primary-fixed font-label-sm text-label-sm shadow-sm transition-colors"
+                onClick={() => setTravelersOpen(false)}
+                className="mt-2 w-full h-10 rounded-md border border-brand text-brand font-semibold hover:bg-brand-light"
               >
-                Use Optimum
+                Done
               </button>
             </div>
-            {fieldErrors.budget && (
-              <span className="text-error font-body-sm text-body-sm">{fieldErrors.budget}</span>
-            )}
-            <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
-              <span>
-                Benchmark for {adults}A {children > 0 ? `+ ${children}C` : ''}:{' '}
-                <strong className="text-on-surface font-semibold">₹3,80,000 – ₹5,20,000</strong>
-              </span>
-              <span className="text-primary font-medium">Taxes &amp; Surcharges inclusive</span>
-            </div>
-          </div>
-
-          {/* Live Budget Tier & Feasibility Visualizer */}
-          <div className="md:col-span-6 flex flex-col justify-between bg-surface-container-low/60 p-space-md rounded-xl">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-space-xs">
-                <span className="material-symbols-outlined text-[18px] text-primary">insights</span>
-                <span className="font-headline-sm text-headline-sm text-on-surface">
-                  Budget Adequacy Analysis
-                </span>
-              </div>
-              <span className={tierClass}>{tierName}</span>
-            </div>
-
-            {/* Segmented Gauge Bar */}
-            <div className="w-full space-y-1 my-2">
-              <div className="w-full h-2.5 bg-surface-container-highest rounded-full overflow-hidden flex">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${gaugePercent}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
-                <span>Value (₹2.8L)</span>
-                <span className="text-primary font-semibold">
-                  Current: {formatINR(rawBudget)}
-                </span>
-                <span>Signature Luxe (₹6.5L+)</span>
-              </div>
-            </div>
-
-            {/* Inclusions Snapshot */}
-            <div className="flex flex-wrap items-center gap-space-md font-body-sm text-body-sm text-on-surface-variant pt-1">
-              <span className="flex items-center gap-1 text-on-surface">
-                <span className="material-symbols-outlined text-[15px] text-primary">check_circle</span>
-                Premium Centric Stays
-              </span>
-              <span className="flex items-center gap-1 text-on-surface">
-                <span className="material-symbols-outlined text-[15px] text-primary">check_circle</span>
-                Intercity Transfers
-              </span>
-              <span className="flex items-center gap-1 text-on-surface">
-                <span className="material-symbols-outlined text-[15px] text-primary">check_circle</span>
-                Full Baggage Included
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Master Submission & Safety Assurances */}
-        <div className="pt-space-md flex flex-col sm:flex-row items-center justify-between gap-space-md">
-          {/* Trust Indicators */}
-          <div className="flex flex-wrap items-center gap-y-1 gap-x-space-md text-on-surface-variant font-body-sm text-body-sm">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-              Instant algorithmic compilation (3-4 secs)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-              100% itemized price breakdown
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-              Modifiable post-generation
-            </span>
-          </div>
+        {/* Budget */}
+        <label className={field}>
+          <span className="text-ink-mute font-semibold">₹</span>
+          <span className="min-w-0 flex-1">
+            <span className={caption}>Total budget</span>
+            <input
+              inputMode="numeric"
+              value={budgetStr}
+              onChange={(e) => {
+                const d = e.target.value.replace(/[^0-9]/g, '');
+                setBudgetStr(d ? parseInt(d, 10).toLocaleString('en-IN') : '');
+              }}
+              placeholder="3,50,000"
+              className={inputCls}
+              aria-label="Total budget in rupees"
+            />
+          </span>
+        </label>
 
-          {/* Main CTA */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full sm:w-auto min-w-[240px] h-12 px-space-lg rounded-lg bg-primary-container text-on-primary hover:bg-primary font-headline-sm text-headline-sm flex items-center justify-center gap-space-sm shadow-md transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer"
-          >
-            {loading ? (
-              <>
-                <span className="inline-block animate-spin material-symbols-outlined text-[18px]">
-                  progress_activity
-                </span>
-                <span>Compiling Itinerary...</span>
-              </>
-            ) : (
-              <>
-                <span>Build My Holiday</span>
-                <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1">
-                  arrow_forward
-                </span>
-              </>
-            )}
-          </button>
-        </div>
-      </form>
-    </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="h-14 px-6 rounded-md bg-brand hover:bg-brand-dark text-white text-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-70 md:col-span-2 lg:col-span-1"
+        >
+          {loading ? (
+            <span className="w-5 h-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+          ) : (
+            <Icon name="search" />
+          )}
+          {loading ? 'Building…' : 'Search'}
+        </button>
+      </div>
+
+      {/* Helper line + errors */}
+      <div className="mt-3 text-sm text-white/90 flex flex-wrap gap-x-4 gap-y-1">
+        <span>
+          <Icon name="event" className="!text-base mr-1" />
+          Back on {returnDate || '—'}
+        </span>
+        {cities.length > 0 && (
+          <span>
+            <Icon name="map" className="!text-base mr-1" />
+            {nights >= 6
+              ? `Up to ${Math.min(cities.length, Math.max(1, Math.floor(nights / 3)))} of ${cities.join(', ')}`
+              : `One of ${cities.join(', ')}`}{' '}
+            — we pick the best split
+          </span>
+        )}
+        {budget > 0 && (
+          <span>
+            <Icon name="savings" className="!text-base mr-1" />≈ ₹{(budget / 100000).toFixed(budget % 100000 ? 2 : 0)} lakh
+          </span>
+        )}
+      </div>
+      {Object.keys(allErrors).length > 0 && (
+        <ul className="mt-3 bg-white rounded-md border border-bad/40 p-3 text-sm text-bad space-y-1" role="alert">
+          {Object.entries(allErrors).map(([k, m]) => (
+            <li key={k} className="flex items-start gap-2">
+              <Icon name="error" filled className="!text-base mt-0.5" />
+              <span>{m}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </form>
   );
 };
