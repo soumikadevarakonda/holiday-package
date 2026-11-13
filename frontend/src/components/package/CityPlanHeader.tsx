@@ -19,16 +19,16 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
 }) => {
   const pkgData: PackageData = packageRes.package_data || packageRes.package || ({} as PackageData);
   const total = packageRes.total_inr || packageRes.total_price || pkgData.total_inr || 0;
-  const targetBudget = pkgData.totals?.budget || 450000;
+  const targetBudget = pkgData.totals?.budget || pkgData.budget_inr || 0;
   const diff = targetBudget - total;
   const isUnder = diff >= 0;
 
   // City corridor
-  const cities = pkgData.cities || ['Tokyo', 'Kyoto'];
+  const cities = pkgData.cities || [];
   const nightsPerCity = pkgData.nights_per_city || {};
 
   // Travelers
-  const travelers = pkgData.travelers || { adults: 2, children: 1, child_ages: [7] };
+  const travelers = pkgData.travelers || { adults: 0, children: 0, child_ages: [] };
   const travelerText = `${travelers.adults} ${travelers.adults === 1 ? 'Adult' : 'Adults'}${
     travelers.children > 0
       ? `, ${travelers.children} ${travelers.children === 1 ? 'Child' : 'Children'}`
@@ -36,8 +36,9 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
   }`;
 
   // Dates
-  const startDateStr = formatDate(pkgData.start_date || '2027-04-05');
-  const endDateStr = formatDate(pkgData.end_date || '2027-04-13');
+  const startDateStr = formatDate(pkgData.start_date);
+  const endDateStr = formatDate(pkgData.end_date);
+  const isBooked = packageRes.status === 'BOOKED';
 
   // Reference
   const refCode = packageRes.package_id.toUpperCase().slice(0, 10);
@@ -60,7 +61,7 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
           </div>
           <div className="flex items-center gap-space-xs bg-surface-container-low px-space-sm py-1 rounded-full text-on-surface-variant font-currency-md text-label-sm">
             <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-            <span>LIVE QUOTE ACCREDITED</span>
+            <span>{packageRes.status}</span>
             <span className="text-outline-variant">•</span>
             <span>VERSION v{packageRes.version_no || packageRes.version || 1}</span>
           </div>
@@ -78,7 +79,8 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
               </span>
             </div>
             <h1 className="font-headline-xl text-headline-xl text-on-surface tracking-tight font-bold">
-              {pkgData.country || 'Destination'} Discovery: {cities.join(' & ')}
+              {pkgData.traveler_name && pkgData.traveler_name !== 'Traveler' ? `${pkgData.traveler_name}: ` : ''}
+              {pkgData.country || 'Your holiday'} — {cities.join(' & ')}
             </h1>
             <div className="flex flex-wrap items-center gap-x-space-md gap-y-space-xs mt-1 text-on-surface-variant font-body-md text-body-md">
               <span className="flex items-center gap-1">
@@ -115,7 +117,7 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
               className="flex items-center gap-space-xs px-space-lg py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-sm text-headline-sm transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-60"
             >
               <span className="material-symbols-outlined text-[20px]">verified_user</span>
-              <span>{confirming ? 'Confirming...' : 'Confirm Holiday'}</span>
+              <span>{confirming ? 'Confirming...' : isBooked ? 'View Booking' : 'Confirm Holiday'}</span>
             </button>
           </div>
         </div>
@@ -138,7 +140,7 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
                       <span className="material-symbols-outlined text-[16px] text-secondary">
                         train
                       </span>
-                      <span>Intercity Transit</span>
+                      <span>Train</span>
                     </div>
                     <span className="material-symbols-outlined text-outline-variant text-[16px]">
                       arrow_forward
@@ -151,7 +153,7 @@ export const CityPlanHeader: React.FC<CityPlanHeaderProps> = ({
                   </span>
                   <span className="font-semibold">{city}</span>
                   <span className="text-on-surface-variant text-[11px]">
-                    ({nightsPerCity[city] || Math.floor(8 / cities.length)} Nights)
+                    ({nightsPerCity[city] ?? '?'} {nightsPerCity[city] === 1 ? 'Night' : 'Nights'})
                   </span>
                 </div>
               </React.Fragment>
