@@ -26,6 +26,11 @@ export function usePackage(packageId: string | undefined) {
       setError(null);
       const res = await getPackage(packageId);
       setData(res);
+      try {
+        localStorage.setItem('bmh:lastPackage', packageId);
+      } catch {
+        /* storage unavailable: the nav link just falls back to the planner */
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load package details');
     } finally {
@@ -88,7 +93,7 @@ export function usePackage(packageId: string | undefined) {
       try {
         setActionLoading(true);
         setError(null);
-        const res = await rebuildPackage(packageId, cityPlan);
+        const res = await rebuildPackage(packageId, cityPlan, data?.version_no ?? data?.version);
         setData(res);
         await fetchPackage();
         return res;
@@ -99,7 +104,7 @@ export function usePackage(packageId: string | undefined) {
         setActionLoading(false);
       }
     },
-    [packageId, fetchPackage]
+    [packageId, data, fetchPackage]
   );
 
   return {
