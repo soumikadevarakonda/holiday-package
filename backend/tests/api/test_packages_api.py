@@ -173,3 +173,15 @@ def test_failed_transaction_leaves_nothing(db_session):
     verify = TestingSessionLocal()
     assert verify.get(Package, "pkg-rollback") is None
     verify.close()
+
+
+def test_view_items_carry_catalog_details_and_days_have_a_city(client):
+    """The UI shows real airline / hotel / image data; the stored package stays in the shared trip format."""
+    d = build(client).json()
+    items = {i["item_id"]: i for i in d["items"]}
+    assert items["i1"]["details"]["leg"] == "arrival" and items["i1"]["details"]["airline"]
+    assert items["i11"]["details"]["leg"] == "return"
+    hotel = next(i for i in d["items"] if i["type"] == "hotel")
+    assert hotel["details"]["hotel_name"] and hotel["details"]["room_name"] and hotel["details"]["nights"] == 2
+    assert all("details" not in i for i in d["package"]["items"])
+    assert [day["city"] for day in d["timeline"]] == ["Tokyo", "Tokyo"] + ["Osaka"] * 5
