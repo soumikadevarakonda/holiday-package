@@ -25,7 +25,7 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         url = get_settings().DB_URL
-        kwargs = {"connect_args": {"connect_timeout": 1}} if url.startswith("mysql") else {}
+        kwargs = {"connect_args": {"connect_timeout": 10}} if url.startswith("mysql") else {}
         _engine = create_engine(url, pool_pre_ping=True, pool_recycle=1800, **kwargs)
     return _engine
 
