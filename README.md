@@ -4,7 +4,7 @@
  
 [**Live demo**](https://holiday-package-seven.vercel.app) · [Source](https://github.com/soumikadevarakonda/holiday-package) · React + TypeScript · FastAPI · MySQL 8 · **no AI inside the app**
  
-<p align="center"><img src="docs/screenshots/02-package.png" alt="Package for the Menon family: Tokyo 2 nights, Osaka 4 nights, total ₹2,30,440" width="900"></p>
+<p align="center"><img src="docs/screenshots/01-search.png" alt="Package for the Menon family: Tokyo 2 nights, Osaka 4 nights, total ₹2,30,440" width="900"></p>
 ## What it does
  
 Give it a departure city, destination country, start date, nights, travelers and budget. The app **chooses the cities**, then builds flights, hotels, airport transfers, inter-city transfers and attractions into a day-by-day plan with the total and the budget left or over. Change a hotel, flight or attraction and the **whole package is re-checked**: updated, or refused with a reason. Book it to get a **10-digit booking number** that reopens the full itinerary, even after a restart.
