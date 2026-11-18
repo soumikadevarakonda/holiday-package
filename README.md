@@ -1,175 +1,103 @@
-# Build My Holiday
-
-A web app that turns 7 inputs into one complete, rule-valid holiday package: flights, hotels, airport transfers, inter-city transfers and attractions. The app re-validates the whole package after every change and books it under a 10-digit reservation number.
-
-**Stack:** React (Vite + TypeScript) · Python (FastAPI) · MySQL 8
-**Build method:** enumerate + greedy + validate. No AI, no external solver.
-
-Full details: [docs/PRD.md](docs/PRD.md) · [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
-Problem statement and data: [data/problem-1-holiday-package.md](data/problem-1-holiday-package.md) · [data/DATA_DICTIONARY.md](data/DATA_DICTIONARY.md)
-
----
-
-## Data pack
-
-The provided data lives in [data/](data/) and is **read-only**: the judges use the same files. Our own state (packages, reservations, inventory use) goes in MySQL.
-
-| Path | Contents |
-|---|---|
-| `data/catalog/` | 8 JSON files: 10 airports, 469 flights, 49 hotels, 125 room types, 2,500 room-nights, 66 transfers, 56 attractions, plus destinations and rules |
-| `data/DATA_DICTIONARY.md` | Every field, how the files link, the shared trip format, data FAQ |
-| `data/trip_format_example.json` | Example of the export shape |
-| `data/images/` | 56 attraction photos and 10 generic hotel photos, served by the backend at `/images` |
-| `data/images/ATTRIBUTIONS.md` | Photo credits, shown on the app's photo-credits footer |
-
-Flights and rooms exist only from **1 to 20 April 2027**.
-
----
-
+# 🌏 Build My Holiday
+ 
+**Seven inputs in. One complete, rule-correct holiday package out. Re-checked after every change, then booked under a 10-digit reservation number.**
+ 
+[**Live demo**](https://holiday-package-seven.vercel.app) · [Source](https://github.com/soumikadevarakonda/holiday-package) · React + TypeScript · FastAPI · MySQL 8 · **no AI inside the app**
+ 
+<p align="center"><img src="docs/screenshots/02-package.png" alt="Package for the Menon family: Tokyo 2 nights, Osaka 4 nights, total ₹2,30,440" width="900"></p>
+## What it does
+ 
+Give it a departure city, destination country, start date, nights, travelers and budget. The app **chooses the cities**, then builds flights, hotels, airport transfers, inter-city transfers and attractions into a day-by-day plan with the total and the budget left or over. Change a hotel, flight or attraction and the **whole package is re-checked**: updated, or refused with a reason. Book it to get a **10-digit booking number** that reopens the full itinerary, even after a restart.
+ 
+All logic runs in the backend. The frontend only displays what the API returns.
+ 
+## Screens
+ 
+**1. Plan a trip.** Seven fields, with a "describe your trip in one line" box (rules, no AI) and an option to compare the cheapest, fastest and best-rated packages.
+ 
+![Plan a trip](docs/screenshots/01-search.png)
+ 
+**2. Your package.** City plan, day-by-day itinerary with filters and jump-to-day, a live price summary against the budget, and a Change button on every flight, stay and activity.
+ 
+![Package](docs/screenshots/02-package.png)
+ 
+**3. Booked.** A unique 10-digit booking number, the full itinerary, price paid, and print or download. Find it again any time with **Find a booking**.
+ 
+![Booked](docs/screenshots/03-booked.png)
+ 
 ## Quick start
-
+ 
 ```bash
 cp .env.example .env
-
-# 1. Docker (recommended)
-docker compose up --build        # MySQL :3306, API :8000 (/docs); web :5173 added later
-
-# 2. Without Docker (MySQL 8 running)
-mysql -u root -p < database/init/000_create_database.sql   # once: database `holiday` + dev user
-./start.sh                       # venv + deps, starts the API; startup creates tables and seeds the catalog
+docker compose up --build
 ```
-
-| Service | URL |
-|---|---|
-| Web app | http://localhost:5173 *(after M-2)* |
-| API | http://localhost:8000/api |
-| API docs (Swagger) | http://localhost:8000/docs |
-| Health | http://localhost:8000/api/health |
-
-Step-by-step instructions and troubleshooting: [Project.md, section 9](Project.md#9-running-the-backend-after-phase-0).
-
-### Environment variables (`.env`)
-
-| Variable | Purpose |
-|---|---|
-| `DB_URL` | MySQL connection string, default `mysql+pymysql://holiday:holiday@localhost:3306/holiday` |
-| `DATA_DIR` | Data pack folder (default `<repo>/data`) |
-| `DATABASE_DIR` | SQL folder (default `<repo>/database`) |
-| `API_PORT` / `WEB_PORT` | Backend / frontend ports (`8000` / `5173`) |
-| `CORS_ORIGINS` | Allowed frontend origins |
-| `DB_AUTO_INIT` | `true`: apply `database/schema` and seed the catalog on startup |
-| `MYSQL_ROOT_PASSWORD` | Docker only: root password of the MySQL container |
-
----
-
-## Architecture
-
-```mermaid
-flowchart TB
-  FE["React frontend (Vite)<br/>Request form · Day-by-day plan · Change panels · Reservation page"]
-  FE -->|REST + JSON over /api| RT
-  subgraph BE["Python backend (FastAPI)"]
-    RT["API routers<br/>meta · packages · options · change · confirm · reservations · export"]
-    RT --> BLD["Builder<br/>city plans, then cheapest valid parts"]
-    RT --> CHG["Change service<br/>options, price diffs, re-time, re-check"]
-    RT --> VAL["Validator<br/>every rule, by ID"]
-    RT --> PRC["Pricing<br/>INR line items, total"]
-  end
-  BE -->|read-only, per request| CAT["Catalog store (in-memory)<br/>loaded once at startup"]
-  JSON["data/catalog/*.json<br/>(read-only source)"] -->|seed on startup| CDB
-  CDB -->|load once| CAT
-  subgraph DB["MySQL 8"]
-    CDB[("Catalog tables (ER diagram)<br/>country · city · airport · flight · hotel · room<br/>availability · transfer + subtypes · attraction")]
-    ADB[("App state (ORM)<br/>trips · packages · package_versions<br/>reservations · reservation_items · inventory_usage")]
-  end
-  BE -->|SQLAlchemy| ADB
-```
-
-- **Frontend** displays only. It computes no prices, rules or city choices; it renders what the API returns.
-- **Backend** holds all logic. Builder, change, confirm and export all call the same validator and pricing on the whole package.
-- **Catalog**: the backend copies `data/catalog/*.json` into MySQL tables that follow the [ER diagram](database/travel_platform_er_diagram.md). It then loads those tables into memory once at startup. The JSON files are never edited. Photos in `data/images/` are served as static files at `/images`.
-- **MySQL** also stores app state: requests, packages and their versions, reservations, and inventory use. See [database/README.md](database/README.md).
-
-### Repository layout
-
-```
-├── data/        # provided data pack (brief, dictionary, catalog, images), untouched
-├── docs/        # PRD and project structure
-├── database/    # ER diagram, MySQL init, schema (001–005 catalog, 006–011 app state), seeds, scripts
-├── backend/     # FastAPI app: core, catalog, pricing, rules, builder,
-│                # packages, changes, export, reservations, inventory, parser
-└── frontend/    # React app: api client, pages, components, hooks
-```
-
-Backend dependencies point one way: routers → services → domain (builder → rules → pricing → catalog → core) → repositories → MySQL. The domain modules never import a router, a repository or SQLAlchemy.
-
----
-
-## City rule
-
-The backend chooses the cities, their order and the nights per city.
-
-1. **Target city count** `c* = max(1, floor(N / 3))`, capped by the cities in the country (Japan 3, UAE 2). That is about 3 nights per city: 6 nights → 2 cities; 9 nights → 3 in Japan, 2 in the UAE.
-2. Among valid plans with `c*` cities, pick the **cheapest package within budget**.
-3. If none fits, try `c* − 1` down to 1, then `c* + 1`.
-4. If no plan fits the budget at any count, return the **over-budget** outcome (M8) with the cheapest possible package.
-
-Each city gets at least 2 consecutive nights. For the Menon family (6 nights in Japan), this gives 2 cities at about ₹2,30,440 before paid attractions, against ₹2,19,324 for Tokyo alone: roughly 5% more for a more varied trip. The G4 alternatives still offer the cheapest package.
-
-### How a package is built
-
-1. Validate the request (M1).
-2. Pre-filter arrival and return flights by local date and seats.
-3. Enumerate city plans: city orders × night splits (at most 135 for Japan at 10 nights).
-4. Per city, pick the cheapest valid hotel + room type + room count.
-5. Pick the cheapest flight pair whose airport transfers fit the timing rules.
-6. Pick inter-city transfers on the 30-minute departure grid.
-7. Schedule attractions greedily (free and child-friendly first), with no overlaps.
-8. Price every line item and run the full validator. Drop any plan that fails.
-9. Choose by the city rule.
-
----
-
+ 
+No Docker (MySQL 8 running): `mysql -u root -p < database/init/000_create_database.sql && ./start.sh`
+ 
+App at **http://localhost:5173** · API docs at **http://localhost:8000/docs**. The catalog seeds itself on startup. Reset state before a demo with `database/seeds/demo_reset.sql`.
+ 
+**Try the Menon request:** BLR → Japan, 10 April 2027, 6 nights, 2 adults + 1 child (6), ₹3,50,000. Expect Tokyo (2 nights) and Osaka (4 nights) at ₹2,30,440, with ₹1,19,560 left.
+ 
 ## Features
-
-| ID | Feature | Status |
-|---|---|---|
-| M1 | Request form with backend validation | ☐ |
-| M2 | Build one package (or explain why not) | ☐ |
-| M3 | Every rule respected (shared validator) | ☐ |
-| M4 | Day-by-day plan | ☐ |
-| M5 | Total, budget, JSON export | ☐ |
-| M6 | Change hotel, flight, attractions | ☐ |
-| M7 | Confirm + 10-digit reservation + summary | ☐ |
-| M8 | Budget too small | ☐ |
-| G1 | Knock-on effects (re-time, drop, warn) | ☐ |
-| G2 | Price difference on each option | ☐ |
-| G3 | Change cities | ☐ |
-| G4 | Cheapest, fastest, best-rated packages | ☐ |
-| S1 | Quick request parser (rules only, no AI) | ☐ |
-| S2 | Booking consumes seats and rooms | ☐ |
-| S3 | Own idea | ☐ |
-
----
-
-## Running tests
-
-```bash
-cd backend
-pytest
+ 
+| | |
+|---|---|
+| **Must (M1–M8)** | Validated request form · package builder with "no package" reasons · every rule enforced · day-by-day plan · total, budget and JSON export · change hotel, flight, attractions · confirm and booking lookup · budget-too-small with cheapest total and a suggestion |
+| **Good (G1–G4)** | Knock-on fixes and warnings · price difference on every option · change city plan · cheapest, fastest and best-rated packages |
+| **Stretch (S1–S3)** | Plain-words quick request · bookings consume seats and rooms · package undo, in-trip search, photo credits |
+ 
+## How it works
+ 
+```mermaid
+flowchart LR
+  FE["React frontend<br/>display only"] -->|REST /api| API
+  subgraph BE["FastAPI backend"]
+    API["Routers"] --> B["Builder"] & C["Changes"]
+    B & C --> V["Validator + Pricing<br/>(one shared copy)"]
+  end
+  CAT["data/catalog JSON<br/>read-only"] -->|seed once| DB[("MySQL<br/>catalog + app state")]
+  DB -->|load at startup| MEM["In-memory catalog"] --> BE
+  BE -->|packages, versions, reservations| DB
 ```
-
-- `tests/unit` — time helpers, pricing, one test per rule ID, city-plan counts, builder fixtures
-- `tests/oracle` — fast and brute-force search give the same totals
-- `tests/api` — build, change, refuse, confirm, lookup
-
----
-
+ 
+**City rule.** Target `max(1, floor(nights / 3))` cities, capped by the country (Japan 3, UAE 2), at least 2 nights each. Pick the cheapest valid plan within budget at that count. If none fits, try fewer cities, then one more. If nothing fits at any count, return the over-budget outcome with the cheapest package. For the Menon trip, two cities cost about 5% more than Tokyo alone for a richer trip, and the cheapest package is still offered.
+ 
+**Build method: enumerate, greedy, validate.**
+1. Validate the request and pre-filter flights by local date and seats.
+2. Enumerate city orders × night splits (at most 135 for Japan at 10 nights).
+3. Per city, pick the cheapest valid hotel, room type and room count.
+4. Pick the cheapest flight pair whose transfers meet the 60 and 180-minute rules.
+5. Pick inter-city transfers, then schedule attractions greedily with no overlaps.
+6. Price everything, run the full validator, drop any plan that fails, then apply the city rule.
+**Correctness.** Every rule from the brief is one validator check with an ID (`D`ates, `F`lights, `AT` airport transfers, `CT` city transfers, `H`otels, `A`ttractions, `P`rices), each with a passing and failing test. The builder, every change, confirm and export all run this same validator, so a change can never slip past a check the builder enforces. Time-zone, `24:00` and past-midnight edge cases live in one tested helper.
+ 
+**Persistence.** Every accepted change is a new package version, so undo is free and conflicting edits are detected. Confirm re-validates, checks inventory inside one transaction, and stores a frozen `BOOKED` snapshot. Confirming twice returns the same number. A wrong number shows "not found".
+ 
+## API
+ 
+`POST /api/packages` · `GET /api/packages/{id}` · `GET …/options/{hotel|flight|attraction}` · `PATCH /api/packages/{id}` · `POST …/rebuild` · `POST …/undo` · `GET …/export` · `POST …/confirm` · `GET /api/reservations/{ref}` · `POST /api/parse` · `GET /api/meta`
+ 
+Errors share one shape: `{code, message, details}`. The export follows the shared trip format in `data/DATA_DICTIONARY.md` §4, with `country`, hotel `room_id`, and `booking.reference` as a string once booked.
+ 
+## Tests
+ 
+```bash
+cd backend && pytest
+```
+ 
+Unit tests cover one test per rule ID, pricing and city plans. An oracle test proves the fast search gives the same totals as brute force. API tests cover build, refused change, confirm, and lookup after restart. Fixtures include the Menon trip, the UAE, other departure cities, large groups, late landings, no-package and tiny-budget cases.
+ 
 ## Known limitations
-
-- Login, payments, real supplier booking and online deployment are out of scope.
-- All prices are in INR; there is no multi-currency support.
+ 
+- No login, payments or real supplier booking. Confirm saves to the app's own store.
+- INR only. Flights and rooms exist only for 1–20 April 2027.
 - Attraction placement is greedy, not globally optimal (the rules don't require it).
-- City-plan enumeration grows as O(C⁵) with the number of cities per country. That is fine for today's catalog (Japan 3, UAE 2); see the PRD, section 7, for the scaling path.
-- Groups of 10 or more travelers are rejected: no flight in the catalog has more than 9 seats left.
+- City-plan enumeration grows as O(C⁵), fine for Japan (3 cities) and the UAE (2).
+- Groups of 10 or more are rejected: no flight has more than 9 seats left.
 - A change that pushes the total over budget is allowed, with a warning.
+## Credits
+ 
+Photo credits are in `data/images/ATTRIBUTIONS.md` and shown in the app footer. All travel data comes from the provided, unmodified `data/catalog/`.
+ 
+More detail: [`PRD-Build-My-Holiday.md`](PRD-Build-My-Holiday.md) · [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) · [`database/README.md`](database/README.md)
+ 
