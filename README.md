@@ -63,7 +63,7 @@ App at **http://localhost:5173** · API docs at **http://localhost:8000/docs**. 
 |---|---|
 | **Must (M1–M8)** | Validated request form · package builder with "no package" reasons · every rule enforced · day-by-day plan · total, budget and JSON export · change hotel, flight, attractions · confirm and booking lookup · budget-too-small with cheapest total and a suggestion |
 | **Good (G1–G4)** | Knock-on fixes and warnings · price difference on every option · change city plan · cheapest, fastest and best-rated packages |
-| **Stretch (S1–S3)** | Plain-words quick request · bookings consume seats and rooms · package undo, in-trip search, photo credits |
+| **Stretch (S1–S3)** | Plain-words quick request · bookings consume seats and rooms · trip tips (April weather, local know-how, tips for your stops and group) · package undo, in-trip search, photo credits |
 
 ## How it works
 
